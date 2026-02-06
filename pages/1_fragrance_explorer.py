@@ -151,7 +151,7 @@ def main() -> None:
     # Now: [4, 3] -> ~57.1% width, effectively doubling the available space.
     sel_col, _ = st.columns([4, 3])
     with sel_col:
-        selected_brand = brand_selector(brands, default=brands[0])
+        selected_brand = brand_selector(brands, default=None)
 
     # Keep helpful tip in the sidebar (no selector here)
     with st.sidebar:
