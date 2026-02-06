@@ -366,12 +366,12 @@ def _metric_card(label: str, value: str, percentile: float, col) -> None:
 def main() -> None:
     st.set_page_config(
         page_title="Brands Landscape",
-        page_icon="🏷️",
+        page_icon="🗺️️",
         layout="wide",
         initial_sidebar_state="expanded",
     )
 
-    st.title("🏷️ Brand Landscape Explorer")
+    st.title("🗺️ Brand Landscape Explorer")
     st.markdown(
         "Interactive scatter plot of every brand — **Quality vs. Popularity**. "
         "Marker size reflects total votes (power-scaled). Search & highlight any brand."
