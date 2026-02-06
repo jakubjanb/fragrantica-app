@@ -156,7 +156,7 @@ def main() -> None:
     # Keep helpful tip in the sidebar (no selector here)
     with st.sidebar:
         st.markdown("### 💡 Tip")
-        st.markdown("Click on any point to open the perfume's Fragrantica page.")
+        st.markdown("Click on any data point to open the perfume's Fragrantica page.")
 
     # --- Summary metrics above the plot ---
     brand_df = df[df["brand"] == selected_brand]
