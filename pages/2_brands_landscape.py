@@ -187,7 +187,7 @@ def _build_figure(df: pd.DataFrame, highlight_brand: str | None = None) -> go.Fi
             ),
             hovertemplate=(
                 "<b>%{text}</b><br>"
-                "Weighted Rating: %{x:.3f}<br>"
+                "Weighted Rating: %{x:.2f}<br>"
                 "Total Votes: %{y:,.0f}<br>"
                 "Consistency: %{customdata[0]:.1f}%<br>"
                 "Portfolio: %{customdata[1]:.0f} fragrances"
@@ -398,19 +398,6 @@ def main() -> None:
 
     brands_list = sorted(df["brand"].unique().tolist())
 
-    # ── Summary metrics row ──────────────────────────────────
-    st.subheader("📊 Dataset Overview")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Brands", f"{len(brands_list):,}")
-    c2.metric("Total Fragrances", f"{int(df['total_fragrances'].sum()):,}")
-    c3.metric("Avg Weighted Rating", f"{df['Weighted_Rating'].mean():.3f}")
-    c4.metric(
-        "Median Total Votes",
-        f"{int(df['total_votes'].median()):,}",
-    )
-
-    st.divider()
-
     # ── Search & highlight controls ──────────────────────────
     col_search, col_btn = st.columns([4, 1])
     with col_search:
@@ -454,7 +441,7 @@ def main() -> None:
             )
             _metric_card(
                 "Weighted Rating",
-                f"{b['Weighted_Rating']:.3f}",
+                f"{b['Weighted_Rating']:.2f}",
                 _pct(b["Weighted_Rating"], "Weighted_Rating"),
                 mc3,
             )
