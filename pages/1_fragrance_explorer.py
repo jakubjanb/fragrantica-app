@@ -175,8 +175,36 @@ def main() -> None:
     with mcol2:
         st.metric(label="Rating ≥ 4.0", value=f"{pct_high:.1%}")
 
+    # --- Vote threshold filter (show top fragrances by default) ---
+    # Reset to filtered view when brand changes
+    if "prev_brand" not in st.session_state or st.session_state.prev_brand != selected_brand:
+        st.session_state.prev_brand = selected_brand
+        st.session_state.show_all = False
+
+    # Button toggles between views
+    if not st.session_state.show_all:
+        if st.button("👁 Show all fragrances"):
+            st.session_state.show_all = True
+            st.rerun()
+    else:
+        if st.button("🔍 Show top fragrances"):
+            st.session_state.show_all = False
+            st.rerun()
+
+    # Filter low-vote fragrances (30th percentile threshold) for the plot only
+    vote_threshold = brand_df["votes"].quantile(0.30)
+
+    if not st.session_state.show_all:
+        shown = int((brand_df["votes"] >= vote_threshold).sum())
+        st.caption(f"Showing {shown} of {total_frags} fragrances (votes ≥ {vote_threshold:.0f})")
+        mask = (df["brand"] == selected_brand) & (df["votes"] >= vote_threshold)
+        df_plot = df[mask | (df["brand"] != selected_brand)].copy()
+    else:
+        st.caption(f"Showing all {total_frags} fragrances")
+        df_plot = df
+
     # Create centered plot container
-    fig = make_figure(df, selected_brand)
+    fig = make_figure(df_plot, selected_brand)
 
     # Render Plotly with a click handler to open the perfume URL in a new tab
     # The figure contains custom_data=["url"] for each point (set in plots.make_figure)

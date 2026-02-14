@@ -459,14 +459,29 @@ def main() -> None:
 
 
     # ── Expandable data table ────────────────────────────────
-    with st.expander("📋 View brand data table"):
-        display_df = (
-            df[["brand", "Weighted_Rating", "total_votes", "Consistency_Score", "total_fragrances"]]
-            .sort_values("Weighted_Rating", ascending=False)
-            .reset_index(drop=True)
+    display_df = (
+        df[["brand", "Weighted_Rating", "total_votes", "Consistency_Score", "total_fragrances"]]
+        .sort_values("Weighted_Rating", ascending=False)
+        .reset_index(drop=True)
+    )
+    display_df.columns = ["Brand", "Weighted Rating", "Total Votes", "Consistency %", "Fragrances"]
+
+    with st.expander(f"📊 Brand data table ({len(display_df)} brands)"):
+        styled = (
+            display_df.style
+            .format({
+                "Weighted Rating": "{:.3f}",
+                "Total Votes": "{:,.0f}",
+                "Consistency %": "{:.1f}%",
+                "Fragrances": "{:d}",
+            })
+            .background_gradient(subset=["Weighted Rating"], cmap="Blues", low=0, high=3)
+            .background_gradient(subset=["Total Votes"], cmap="Purples", low=0, high=3)
+            .background_gradient(subset=["Consistency %"], cmap="Greens", low=0, high=3)
+            .background_gradient(subset=["Fragrances"], cmap="GnBu", low=0, high=3)
+            .hide(axis="index")
         )
-        display_df.columns = ["Brand", "Weighted Rating", "Total Votes", "Consistency %", "Fragrances"]
-        st.dataframe(display_df, use_container_width=True, height=400)
+        st.dataframe(styled, use_container_width=True, height=500)
 
 
 if __name__ == "__main__":
