@@ -232,6 +232,7 @@ def _build_figure(df: pd.DataFrame, highlight_brand: str | None = None) -> go.Fi
         yaxis=dict(
             title="Total Votes (Log Scale)",
             type="log",
+            range=[np.log10(max(float(y.min()), 1)) - 0.3, np.log10(float(y.max())) + 0.3],
             gridcolor="rgba(0,0,0,0.06)",
             zeroline=False,
         ),
@@ -454,8 +455,32 @@ def main() -> None:
             )
             st.divider()
 
+    # ── Vote threshold filter (30th percentile) ────────────
+    if "brands_show_all" not in st.session_state:
+        st.session_state.brands_show_all = False
+
+    if not st.session_state.brands_show_all:
+        if st.button("👁 Show all brands"):
+            st.session_state.brands_show_all = True
+            st.rerun()
+    else:
+        if st.button("🔍 Show top brands"):
+            st.session_state.brands_show_all = False
+            st.rerun()
+
+    vote_threshold = df["total_votes"].quantile(0.10)
+    total_brands = len(df)
+
+    if not st.session_state.brands_show_all:
+        df_plot = df[df["total_votes"] >= vote_threshold].copy()
+        shown = len(df_plot)
+        st.caption(f"Showing {shown} of {total_brands} brands (votes ≥ {vote_threshold:,.0f})")
+    else:
+        df_plot = df
+        st.caption(f"Showing all {total_brands} brands")
+
     # ── Plotly chart ─────────────────────────────────────────
-    fig = _build_figure(df, highlight_brand=highlight)
+    fig = _build_figure(df_plot, highlight_brand=highlight)
     st.plotly_chart(fig, use_container_width=True)
 
 
