@@ -139,7 +139,7 @@ def main() -> None:
                 <div class="lb-icon">🔍</div>
                 <div class="lb-title">Fragrance Explorer</div>
                 <div class="lb-desc">
-                    Browse perfumes by brand — filter, compare ratings &amp; votes on an interactive scatter chart.
+                    Explore perfumes by brand — click a data point to open its Fragrantica page.
                 </div>
                 <div class="lb-arrow">Open Explorer →</div>
             </a>
