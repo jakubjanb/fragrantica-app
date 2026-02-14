@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 
 # ────────────────────────────────────────────────────────────
 # CONFIG
@@ -498,8 +499,10 @@ def main() -> None:
         header = "".join(
             f'<th style="text-align:left; padding:10px 12px; font-size:13px;'
             f' color:#6b7280; border-bottom:2px solid #e5e7eb;'
-            f' text-transform:uppercase; letter-spacing:0.5px;">{c}</th>'
-            for c in display_df.columns
+            f' text-transform:uppercase; letter-spacing:0.5px;'
+            f' cursor:pointer; user-select:none;"'
+            f' data-col-idx="{i}">{c} <span class="sort-arrow" style="font-size:10px;"></span></th>'
+            for i, c in enumerate(display_df.columns)
         )
         rows_html = []
         for _, row in display_df.iterrows():
@@ -517,16 +520,58 @@ def main() -> None:
                 )
             rows_html.append(f'<tr>{"".join(cells)}</tr>')
 
+        sort_js = """
+        <script>
+        (function() {
+            const table = document.getElementById('brand-table');
+            if (!table) return;
+            const headers = table.querySelectorAll('thead th');
+            let sortCol = -1, sortAsc = true;
+
+            headers.forEach(function(th) {
+                th.addEventListener('click', function() {
+                    const idx = parseInt(th.getAttribute('data-col-idx'));
+                    if (sortCol === idx) { sortAsc = !sortAsc; }
+                    else { sortCol = idx; sortAsc = true; }
+
+                    // Update arrows
+                    headers.forEach(function(h) {
+                        h.querySelector('.sort-arrow').textContent = '';
+                    });
+                    th.querySelector('.sort-arrow').textContent = sortAsc ? ' ▲' : ' ▼';
+
+                    const tbody = table.querySelector('tbody');
+                    const rows = Array.from(tbody.querySelectorAll('tr'));
+                    const isNumeric = idx > 0;
+
+                    rows.sort(function(a, b) {
+                        let aText = a.children[idx].textContent.trim();
+                        let bText = b.children[idx].textContent.trim();
+                        if (isNumeric) {
+                            let aVal = parseFloat(aText.replace(/[,%]/g, ''));
+                            let bVal = parseFloat(bText.replace(/[,%]/g, ''));
+                            return sortAsc ? aVal - bVal : bVal - aVal;
+                        } else {
+                            return sortAsc ? aText.localeCompare(bText) : bText.localeCompare(aText);
+                        }
+                    });
+                    rows.forEach(function(r) { tbody.appendChild(r); });
+                });
+            });
+        })();
+        </script>
+        """
+
         html = (
             f'<div style="max-height:500px; overflow-y:auto; border:1px solid #e5e7eb;'
             f' border-radius:8px;">'
-            f'<table style="width:100%; border-collapse:collapse; font-family:sans-serif;">'
+            f'<table id="brand-table" style="width:100%; border-collapse:collapse; font-family:sans-serif;">'
             f'<thead style="position:sticky; top:0; background:white; z-index:2;">'
             f'<tr>{header}</tr></thead>'
             f'<tbody>{"".join(rows_html)}</tbody>'
-            f'</table></div>'
+            f'</table></div>{sort_js}'
         )
-        st.markdown(html, unsafe_allow_html=True)
+        components.html(html, height=520, scrolling=False)
 
 
 if __name__ == "__main__":
