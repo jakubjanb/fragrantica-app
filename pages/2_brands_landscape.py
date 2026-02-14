@@ -467,21 +467,66 @@ def main() -> None:
     display_df.columns = ["Brand", "Weighted Rating", "Total Votes", "Consistency %", "Fragrances"]
 
     with st.expander(f"📊 Brand data table ({len(display_df)} brands)"):
-        styled = (
-            display_df.style
-            .format({
-                "Weighted Rating": "{:.3f}",
-                "Total Votes": "{:,.0f}",
-                "Consistency %": "{:.1f}%",
-                "Fragrances": "{:d}",
-            })
-            .background_gradient(subset=["Weighted Rating"], cmap="Blues", low=0, high=3)
-            .background_gradient(subset=["Total Votes"], cmap="Purples", low=0, high=3)
-            .background_gradient(subset=["Consistency %"], cmap="Greens", low=0, high=3)
-            .background_gradient(subset=["Fragrances"], cmap="GnBu", low=0, high=3)
-            .hide(axis="index")
+        bar_cols = {
+            "Weighted Rating": "{:.3f}",
+            "Total Votes": "{:,.0f}",
+            "Consistency %": "{:.1f}%",
+            "Fragrances": "{:d}",
+        }
+        col_ranges = {
+            col: (float(display_df[col].min()), float(display_df[col].max()))
+            for col in bar_cols
+        }
+
+        def _bar_cell(val: float, col_min: float, col_max: float, fmt: str) -> str:
+            t = 0.5 if col_max == col_min else max(0.0, min(1.0, (val - col_min) / (col_max - col_min)))
+            color = _percentile_color(t)
+            bar_color = color.replace("rgb", "rgba").replace(")", ",0.22)")
+            width_pct = max(t * 100, 2)
+            formatted = fmt.format(val)
+            return (
+                f'<div style="position:relative; height:28px; line-height:28px;">'
+                f'<div style="position:absolute; top:2px; bottom:2px; left:0;'
+                f' width:{width_pct:.1f}%; background:{bar_color};'
+                f' border-radius:4px;"></div>'
+                f'<span style="position:relative; z-index:1; padding-left:6px;'
+                f' font-size:13px; color:#1a1a1a;">{formatted}</span>'
+                f'</div>'
+            )
+
+        # Build HTML table
+        header = "".join(
+            f'<th style="text-align:left; padding:10px 12px; font-size:13px;'
+            f' color:#6b7280; border-bottom:2px solid #e5e7eb;'
+            f' text-transform:uppercase; letter-spacing:0.5px;">{c}</th>'
+            for c in display_df.columns
         )
-        st.dataframe(styled, use_container_width=True, height=500)
+        rows_html = []
+        for _, row in display_df.iterrows():
+            cells = []
+            for col in display_df.columns:
+                val = row[col]
+                if col in bar_cols:
+                    cmin, cmax = col_ranges[col]
+                    cell_content = _bar_cell(val, cmin, cmax, bar_cols[col])
+                else:
+                    cell_content = f'<span style="font-size:13px; color:#1a1a1a;">{val}</span>'
+                cells.append(
+                    f'<td style="padding:4px 12px; border-bottom:1px solid #f0f0f0;">'
+                    f'{cell_content}</td>'
+                )
+            rows_html.append(f'<tr>{"".join(cells)}</tr>')
+
+        html = (
+            f'<div style="max-height:500px; overflow-y:auto; border:1px solid #e5e7eb;'
+            f' border-radius:8px;">'
+            f'<table style="width:100%; border-collapse:collapse; font-family:sans-serif;">'
+            f'<thead style="position:sticky; top:0; background:white; z-index:2;">'
+            f'<tr>{header}</tr></thead>'
+            f'<tbody>{"".join(rows_html)}</tbody>'
+            f'</table></div>'
+        )
+        st.markdown(html, unsafe_allow_html=True)
 
 
 if __name__ == "__main__":
