@@ -102,6 +102,37 @@ def main() -> None:
         .launch-btn.variant-b .lb-arrow {
             color: #059669;
         }
+
+        .launch-btn.variant-c {
+            background: linear-gradient(135deg, #fffbf5 0%, #fef3e2 100%);
+            border-color: #fed7aa;
+        }
+        .launch-btn.variant-c:hover {
+            border-color: #fb923c;
+            box-shadow: 0 8px 30px rgba(251, 146, 60, 0.15);
+            background: linear-gradient(135deg, #fff8f0 0%, #feecd6 100%);
+        }
+        .launch-btn.variant-c .lb-arrow {
+            color: #ea580c;
+        }
+
+        .launch-btn.variant-d {
+            background: linear-gradient(135deg, #fdf5ff 0%, #f3e8ff 100%);
+            border-color: #e9d5ff;
+        }
+        .launch-btn.variant-d:hover {
+            border-color: #a855f7;
+            box-shadow: 0 8px 30px rgba(168, 85, 247, 0.15);
+            background: linear-gradient(135deg, #faf0ff 0%, #ede3ff 100%);
+        }
+        .launch-btn.variant-d .lb-arrow {
+            color: #9333ea;
+        }
+
+        /* Tighten gap between button rows */
+        .btn-row-gap {
+            margin-top: -0.5rem;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -130,7 +161,7 @@ def main() -> None:
 
     st.markdown("")
 
-    # ── Quick-launch row ────────────────────────────────────────────
+    # ── Quick-launch grid (2 × 2) ───────────────────────────────────
     col_a, col_b = st.columns(2, gap="large")
     with col_a:
         st.markdown(
@@ -156,6 +187,38 @@ def main() -> None:
                     Compare all brands on quality vs. popularity plot, find key data insights.
                 </div>
                 <div class="lb-arrow">Open Landscape →</div>
+            </a>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown('<div class="btn-row-gap"></div>', unsafe_allow_html=True)
+
+    col_c, col_d = st.columns(2, gap="large")
+    with col_c:
+        st.markdown(
+            """
+            <a href="/fragrance_category" target="_self" class="launch-btn variant-c">
+                <div class="lb-icon">🏷️</div>
+                <div class="lb-title">Fragrance by Category</div>
+                <div class="lb-desc">
+                    Find the best and most popular fragrances in each category — Woody, Oriental, Citrus, and more.
+                </div>
+                <div class="lb-arrow">Open Categories →</div>
+            </a>
+            """,
+            unsafe_allow_html=True,
+        )
+    with col_d:
+        st.markdown(
+            """
+            <a href="/fragrance_woman_unisex_men" target="_self" class="launch-btn variant-d">
+                <div class="lb-icon">👤</div>
+                <div class="lb-title">Women · Unisex · Men</div>
+                <div class="lb-desc">
+                    Explore fragrances by target audience — compare ratings across women's, unisex, and men's perfumes.
+                </div>
+                <div class="lb-arrow">Open Gender View →</div>
             </a>
             """,
             unsafe_allow_html=True,
