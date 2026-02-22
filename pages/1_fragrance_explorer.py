@@ -89,6 +89,10 @@ def _render_top_fragrances_table(display_df) -> None:
                     safe_link = escape(link, quote=True)
                     cell_content = (
                         f'<a href="{safe_link}" target="_blank" rel="noopener" '
+                        f'data-url="{safe_link}" '
+                        f'onclick=\'var u=this.getAttribute("data-url");'
+                        f'if(u&&/^https?:\\/\\//i.test(u)){{window.open(u,"_blank","noopener,noreferrer");}}'
+                        f'return false;\' '
                         f'style="font-size:13px; color:#2563eb; text-decoration:none;">Open</a>'
                     )
                 else:
