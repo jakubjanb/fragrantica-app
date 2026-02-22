@@ -138,6 +138,17 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
+    def load_icon_tag(filename: str, fallback_emoji: str) -> str:
+        icon_path = Path(__file__).parent / "Graphics" / filename
+        if icon_path.exists():
+            with open(icon_path, "rb") as f:
+                icon_data = base64.b64encode(f.read()).decode()
+            return (
+                f'<img src="data:image/png;base64,{icon_data}" width="50" '
+                'style="vertical-align: middle;" alt="">'
+            )
+        return fallback_emoji
+
     # ── Hero ────────────────────────────────────────────────────────
     # Load and encode the perfume emoji image
     img_path = Path(__file__).parent / "Graphics" / "perfume_emoji.png"
@@ -147,6 +158,9 @@ def main() -> None:
         img_tag = f'<img src="data:image/png;base64,{img_data}" width="50" style="vertical-align: middle; margin-right: 10px;">'
     else:
         img_tag = "🧴"  # Fallback to emoji if image not found
+
+    wheel_icon_tag = load_icon_tag("fragrance_wheel.png", "🏷️")
+    shelf_icon_tag = load_icon_tag("fragrance_shelf.png", "👤")
 
     st.markdown("")
     col_hero, _ = st.columns([3, 1])
@@ -197,10 +211,10 @@ def main() -> None:
     col_c, col_d = st.columns(2, gap="large")
     with col_c:
         st.markdown(
-            """
+            f"""
             <a href="/fragrance_category" target="_self" class="launch-btn variant-c">
-                <div class="lb-icon">🏷️</div>
-                <div class="lb-title">Fragrance by Category</div>
+                <div class="lb-icon">{wheel_icon_tag}</div>
+                <div class="lb-title">Fragrance Wheel Explorer</div>
                 <div class="lb-desc">
                     Find the best and most popular fragrances in each category — Woody, Oriental, Citrus, and more.
                 </div>
@@ -211,10 +225,10 @@ def main() -> None:
         )
     with col_d:
         st.markdown(
-            """
+            f"""
             <a href="/fragrance_woman_unisex_men" target="_self" class="launch-btn variant-d">
-                <div class="lb-icon">👤</div>
-                <div class="lb-title">Women · Unisex · Men</div>
+                <div class="lb-icon">{shelf_icon_tag}</div>
+                <div class="lb-title">Your Fragrance Shelf</div>
                 <div class="lb-desc">
                     Explore fragrances by target audience — compare ratings across women's, unisex, and men's perfumes.
                 </div>
