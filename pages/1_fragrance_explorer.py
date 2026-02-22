@@ -237,6 +237,32 @@ def main() -> None:
         if _k not in st.session_state:
             st.session_state[_k] = _v
 
+    brand_all_df = df[df["brand"] == selected_brand].copy()
+    sex_counts = {
+        "women": int((brand_all_df["sex"] == "women").sum()),
+        "unisex": int((brand_all_df["sex"] == "unisex").sum()),
+        "men": int((brand_all_df["sex"] == "men").sum()),
+    }
+
+    # Keep unavailable segments off for current brand.
+    if sex_counts["women"] == 0:
+        st.session_state.sex_women = False
+    if sex_counts["unisex"] == 0:
+        st.session_state.sex_unisex = False
+    if sex_counts["men"] == 0:
+        st.session_state.sex_men = False
+
+    # Ensure at least one available segment remains active.
+    if any(sex_counts.values()) and not any(
+        [st.session_state.sex_women, st.session_state.sex_unisex, st.session_state.sex_men]
+    ):
+        if sex_counts["women"] > 0:
+            st.session_state.sex_women = True
+        elif sex_counts["unisex"] > 0:
+            st.session_state.sex_unisex = True
+        else:
+            st.session_state.sex_men = True
+
     selected_sexes = (
         (["women"] if st.session_state.sex_women else [])
         + (["unisex"] if st.session_state.sex_unisex else [])
@@ -244,15 +270,22 @@ def main() -> None:
     )
 
     # --- Summary metrics and filters ---
-    brand_df = df[(df["brand"] == selected_brand) & (df["sex"].isin(selected_sexes))]
+    brand_df = brand_all_df[brand_all_df["sex"].isin(selected_sexes)]
     total_frags = int(len(brand_df))
     # Guard against empty slice; ratings are coerced to numeric in load_data
     if total_frags > 0:
         high_rating_count = int((brand_df["rating"] >= 4.0).sum())
         pct_high = high_rating_count / total_frags
+        total_votes = float(brand_df["votes"].sum())
+        if total_votes > 0:
+            weighted_avg_rating = float((brand_df["rating"] * brand_df["votes"]).sum() / total_votes)
+            weighted_avg_rating_display = f"{weighted_avg_rating:.2f}"
+        else:
+            weighted_avg_rating_display = "N/A"
     else:
         high_rating_count = 0
         pct_high = 0.0
+        weighted_avg_rating_display = "N/A"
 
     # --- Vote threshold filter (show top fragrances by default) ---
     # Reset to filtered view when brand changes
@@ -260,60 +293,81 @@ def main() -> None:
         st.session_state.prev_brand = selected_brand
         st.session_state.show_all = False
 
-    mcol1, mcol2 = st.columns(2)
+    mcol1, mcol2, mcol3 = st.columns(3)
     with mcol1:
         st.metric(label="Number of fragrances", value=f"{total_frags}")
     with mcol2:
         st.metric(label="Rating ≥ 4.0", value=f"{pct_high:.1%}")
+    with mcol3:
+        st.metric(label="Weighted avg rating", value=weighted_avg_rating_display)
 
     st.markdown('<p class="toolbar-note">Metrics are calculated within current filters.</p>', unsafe_allow_html=True)
 
     ctrl0, ctrl1, ctrl2, ctrl3 = st.columns([2.2, 1, 1, 1])
+    active_segments = int(st.session_state.sex_women) + int(st.session_state.sex_unisex) + int(st.session_state.sex_men)
+    blocked_last_segment_toggle = False
 
     with ctrl0:
         st.toggle("👁 Show all fragrances", key="show_all")
 
     with ctrl1:
-        women_label = "✓ Women" if st.session_state.sex_women else "Women"
+        women_label = f"Women ({sex_counts['women']})"
         if st.button(
             women_label,
             key="women_filter",
             type="primary" if st.session_state.sex_women else "secondary",
+            disabled=sex_counts["women"] == 0,
         ):
-            st.session_state.sex_women = not st.session_state.sex_women
-            st.rerun()
+            if st.session_state.sex_women and active_segments == 1:
+                blocked_last_segment_toggle = True
+            else:
+                st.session_state.sex_women = not st.session_state.sex_women
+                st.rerun()
 
     with ctrl2:
-        unisex_label = "✓ Unisex" if st.session_state.sex_unisex else "Unisex"
+        unisex_label = f"Unisex ({sex_counts['unisex']})"
         if st.button(
             unisex_label,
             key="unisex_filter",
             type="primary" if st.session_state.sex_unisex else "secondary",
+            disabled=sex_counts["unisex"] == 0,
         ):
-            st.session_state.sex_unisex = not st.session_state.sex_unisex
-            st.rerun()
+            if st.session_state.sex_unisex and active_segments == 1:
+                blocked_last_segment_toggle = True
+            else:
+                st.session_state.sex_unisex = not st.session_state.sex_unisex
+                st.rerun()
 
     with ctrl3:
-        men_label = "✓ Men" if st.session_state.sex_men else "Men"
+        men_label = f"Men ({sex_counts['men']})"
         if st.button(
             men_label,
             key="men_filter",
             type="primary" if st.session_state.sex_men else "secondary",
+            disabled=sex_counts["men"] == 0,
         ):
-            st.session_state.sex_men = not st.session_state.sex_men
-            st.rerun()
+            if st.session_state.sex_men and active_segments == 1:
+                blocked_last_segment_toggle = True
+            else:
+                st.session_state.sex_men = not st.session_state.sex_men
+                st.rerun()
 
     # Filter low-vote fragrances (30th percentile threshold) for the plot only
     vote_threshold = float(brand_df["votes"].quantile(0.30)) if total_frags > 0 else 0.0
 
     if not st.session_state.show_all:
         shown = int((brand_df["votes"] >= vote_threshold).sum()) if total_frags > 0 else 0
-        st.caption(f"Showing {shown} of {total_frags} fragrances (votes ≥ {vote_threshold:.0f})")
+        status_text = f"Showing {shown} of {total_frags} fragrances (votes ≥ {vote_threshold:.0f})"
         mask = (df["brand"] == selected_brand) & (df["sex"].isin(selected_sexes)) & (df["votes"] >= vote_threshold)
         df_plot = df[mask | (df["brand"] != selected_brand)].copy()
     else:
-        st.caption(f"Showing all {total_frags} fragrances")
+        status_text = f"Showing all {total_frags} fragrances"
         df_plot = df[df["sex"].isin(selected_sexes) | (df["brand"] != selected_brand)].copy()
+
+    if blocked_last_segment_toggle:
+        status_text = f"{status_text}  |  At least one segment must stay active."
+
+    st.caption(status_text)
 
     # Create centered plot container
     fig = make_figure(df_plot, selected_brand)
