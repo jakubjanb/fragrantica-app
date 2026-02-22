@@ -364,10 +364,12 @@ def main() -> None:
         status_text = f"Showing all {total_frags} fragrances"
         df_plot = df[df["sex"].isin(selected_sexes) | (df["brand"] != selected_brand)].copy()
 
-    if blocked_last_segment_toggle:
-        status_text = f"{status_text}  |  At least one segment must stay active."
-
-    st.caption(status_text)
+    status_col, warn_col = st.columns([2.2, 3])
+    with status_col:
+        st.caption(status_text)
+    with warn_col:
+        if blocked_last_segment_toggle:
+            st.caption("At least one segment must stay active.")
 
     # Create centered plot container
     fig = make_figure(df_plot, selected_brand)
