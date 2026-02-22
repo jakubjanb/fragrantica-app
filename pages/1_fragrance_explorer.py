@@ -4,6 +4,8 @@ Subpage: Fragrance Explorer
 This page contains the full explorer UI that used to live in app.py.
 """
 
+import math
+from html import escape
 from pathlib import Path
 
 import streamlit as st
@@ -12,6 +14,106 @@ import streamlit.components.v1 as components
 from src.data import load_data, list_brands
 from src.widgets import brand_selector
 from src.plots import make_figure
+
+
+def _percentile_color(t: float) -> str:
+    """Return an RGB string along a 5-stop gradient used across analytics tables."""
+    stops = [
+        (0.00, 203, 213, 225),
+        (0.25, 94, 200, 200),
+        (0.50, 16, 185, 129),
+        (0.75, 99, 102, 241),
+        (1.00, 124, 58, 237),
+    ]
+    i = 0
+    for i in range(len(stops) - 2):
+        if t <= stops[i + 1][0]:
+            break
+    a, b = stops[i], stops[i + 1]
+    f = (t - a[0]) / (b[0] - a[0]) if b[0] != a[0] else 0.0
+    r = int(a[1] + f * (b[1] - a[1]))
+    g = int(a[2] + f * (b[2] - a[2]))
+    bl = int(a[3] + f * (b[3] - a[3]))
+    return f"rgb({r},{g},{bl})"
+
+
+def _render_top_fragrances_table(display_df) -> None:
+    """Render a styled Top-10 table with the same visual language as Brand data table."""
+    if display_df.empty:
+        st.info("No fragrances meet the current ranking criteria.")
+        return
+
+    bar_cols = {
+        "Rating": "{:.3f}",
+        "Votes": "{:,.0f}",
+    }
+    col_ranges = {
+        col: (float(display_df[col].min()), float(display_df[col].max()))
+        for col in bar_cols
+    }
+
+    def _bar_cell(val: float, col_min: float, col_max: float, fmt: str) -> str:
+        t = 0.5 if col_max == col_min else max(0.0, min(1.0, (val - col_min) / (col_max - col_min)))
+        color = _percentile_color(t)
+        bar_color = color.replace("rgb", "rgba").replace(")", ",0.22)")
+        width_pct = max(t * 100, 2)
+        formatted = fmt.format(val)
+        return (
+            f'<div style="position:relative; height:28px; line-height:28px;">'
+            f'<div style="position:absolute; top:2px; bottom:2px; left:0;'
+            f' width:{width_pct:.1f}%; background:{bar_color};'
+            f' border-radius:4px;"></div>'
+            f'<span style="position:relative; z-index:1; padding-left:6px;'
+            f' font-size:13px; color:#1a1a1a;">{formatted}</span>'
+            f'</div>'
+        )
+
+    header = "".join(
+        f'<th style="text-align:left; padding:10px 12px; font-size:13px;'
+        f' color:#6b7280; border-bottom:2px solid #e5e7eb;'
+        f' text-transform:uppercase; letter-spacing:0.5px;">{c}</th>'
+        for c in display_df.columns
+    )
+
+    rows_html = []
+    for _, row in display_df.iterrows():
+        cells = []
+        for col in display_df.columns:
+            val = row[col]
+            if col in bar_cols:
+                cmin, cmax = col_ranges[col]
+                cell_content = _bar_cell(float(val), cmin, cmax, bar_cols[col])
+            elif col == "Link":
+                link = "" if val is None else str(val).strip()
+                if link and link.lower() != "nan":
+                    safe_link = escape(link, quote=True)
+                    cell_content = (
+                        f'<a href="{safe_link}" target="_blank" rel="noopener" '
+                        f'style="font-size:13px; color:#2563eb; text-decoration:none;">Open</a>'
+                    )
+                else:
+                    cell_content = '<span style="font-size:13px; color:#9ca3af;">-</span>'
+            else:
+                text_val = "-" if val is None or str(val).lower() == "nan" else str(val)
+                cell_content = f'<span style="font-size:13px; color:#1a1a1a;">{escape(text_val)}</span>'
+
+            cells.append(
+                f'<td style="padding:4px 12px; border-bottom:1px solid #f0f0f0;">'
+                f'{cell_content}</td>'
+            )
+        rows_html.append(f'<tr>{"".join(cells)}</tr>')
+
+    table_height = min(500, max(220, 96 + len(display_df) * 38))
+    html = (
+        f'<div style="max-height:{table_height}px; overflow-y:auto; border:1px solid #e5e7eb;'
+        f' border-radius:8px;">'
+        f'<table style="width:100%; border-collapse:collapse; font-family:sans-serif;">'
+        f'<thead style="position:sticky; top:0; background:white; z-index:2;">'
+        f'<tr>{header}</tr></thead>'
+        f'<tbody>{"".join(rows_html)}</tbody>'
+        f'</table></div>'
+    )
+    components.html(html, height=table_height + 20, scrolling=False)
 
 
 def main() -> None:
@@ -237,6 +339,15 @@ def main() -> None:
         if _k not in st.session_state:
             st.session_state[_k] = _v
 
+    # On first load and on brand change, start with all sex segments selected.
+    brand_changed = st.session_state.get("prev_brand") != selected_brand
+    if brand_changed:
+        st.session_state.sex_women = True
+        st.session_state.sex_unisex = True
+        st.session_state.sex_men = True
+        st.session_state.show_all = False
+        st.session_state.prev_brand = selected_brand
+
     brand_all_df = df[df["brand"] == selected_brand].copy()
     sex_counts = {
         "women": int((brand_all_df["sex"] == "women").sum()),
@@ -288,10 +399,6 @@ def main() -> None:
         weighted_avg_rating_display = "N/A"
 
     # --- Vote threshold filter (show top fragrances by default) ---
-    # Reset to filtered view when brand changes
-    if "prev_brand" not in st.session_state or st.session_state.prev_brand != selected_brand:
-        st.session_state.prev_brand = selected_brand
-        st.session_state.show_all = False
 
     mcol1, mcol2, mcol3 = st.columns(3)
     with mcol1:
@@ -352,8 +459,11 @@ def main() -> None:
                 st.session_state.sex_men = not st.session_state.sex_men
                 st.rerun()
 
-    # Filter low-vote fragrances (30th percentile threshold) for the plot only
-    vote_threshold = float(brand_df["votes"].quantile(0.30)) if total_frags > 0 else 0.0
+    # Filter low-vote fragrances for the plot:
+    # use 30th percentile by default, but stricter 50th percentile for very high-volume brands.
+    brand_total_votes = float(brand_all_df["votes"].sum()) if not brand_all_df.empty else 0.0
+    vote_quantile = 0.50 if brand_total_votes > 150_000 else 0.30
+    vote_threshold = float(brand_df["votes"].quantile(vote_quantile)) if total_frags > 0 else 0.0
 
     if not st.session_state.show_all:
         shown = int((brand_df["votes"] >= vote_threshold).sum()) if total_frags > 0 else 0
@@ -439,6 +549,64 @@ def main() -> None:
 
     # Render full-width so it naturally expands when the sidebar collapses
     components.html(html + click_js, height=950, scrolling=False)
+
+    st.markdown("### Top 10 fragrances")
+    rank_mode = st.radio(
+        "Ranking mode",
+        options=["Reliable top-rated", "Raw rating"],
+        index=0,
+        horizontal=True,
+        key="fragrance_top10_mode",
+        help="Reliable mode ranks with a confidence-aware score. Raw mode ranks by rating only.",
+    )
+
+    min_votes_threshold = int(math.ceil(vote_threshold)) if total_frags > 0 else 0
+    percentile_label = int(vote_quantile * 100)
+    st.caption(
+        f"Top-rated (min {min_votes_threshold:,} votes; {percentile_label}th percentile threshold for current brand filters)"
+    )
+
+    table_pool = brand_df[brand_df["votes"] >= min_votes_threshold].copy()
+    if table_pool.empty:
+        st.info("No fragrances meet the current minimum-votes threshold.")
+    else:
+        # Bayesian-style shrinkage balances rating quality with vote confidence.
+        prior_rating = float(brand_df["rating"].mean()) if not brand_df.empty else 0.0
+        m = float(min_votes_threshold)
+        if m > 0:
+            v = table_pool["votes"].astype(float)
+            r = table_pool["rating"].astype(float)
+            table_pool["reliable_score"] = (v / (v + m)) * r + (m / (v + m)) * prior_rating
+        else:
+            table_pool["reliable_score"] = table_pool["rating"].astype(float)
+
+        if rank_mode == "Reliable top-rated":
+            table_pool = table_pool.sort_values(
+                ["reliable_score", "rating", "votes"],
+                ascending=[False, False, False],
+            )
+        else:
+            table_pool = table_pool.sort_values(
+                ["rating", "votes"],
+                ascending=[False, False],
+            )
+
+        top10_df = table_pool.head(10).copy().reset_index(drop=True)
+        top10_df["Rank"] = top10_df.index + 1
+        top10_df["Sex"] = top10_df["sex"].fillna("-").astype(str).str.capitalize()
+        top10_df["Category"] = top10_df["fragrance_category"].fillna("-").astype(str)
+
+        display_top10 = top10_df[
+            ["Rank", "name", "rating", "votes", "Sex", "Category", "url"]
+        ].rename(
+            columns={
+                "name": "Fragrance",
+                "rating": "Rating",
+                "votes": "Votes",
+                "url": "Link",
+            }
+        )
+        _render_top_fragrances_table(display_top10)
 
 
 if __name__ == "__main__":
