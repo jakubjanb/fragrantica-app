@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      html,
+      body,
+      #plot {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #ffffff;
+      }
+    </style>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  </head>
+  <body>
+    <div id="plot"></div>
+    <script>
+      (function () {
+        const PARENT = window.parent;
+        const plot = document.getElementById("plot");
+        let clickCounter = 0;
+
+        function sendMessage(type, payload) {
+          PARENT.postMessage(
+            Object.assign({ isStreamlitMessage: true, type: type }, payload || {}),
+            "*"
+          );
+        }
+
+        function setFrameHeight(height) {
+          sendMessage("streamlit:setFrameHeight", { height: height });
+        }
+
+        function setComponentValue(value) {
+          sendMessage("streamlit:setComponentValue", { value: value });
+        }
+
+        function safeGet(obj, key, fallback) {
+          if (obj && Object.prototype.hasOwnProperty.call(obj, key)) {
+            return obj[key];
+          }
+          return fallback;
+        }
+
+        function renderFigure(args) {
+          const figure = safeGet(args, "figure", {});
+          const config = Object.assign(
+            { displaylogo: false, responsive: true },
+            safeGet(args, "config", {})
+          );
+
+          if (typeof Plotly === "undefined") {
+            plot.innerHTML = '<div style="padding:12px;color:#b91c1c;font-family:sans-serif;">Plotly failed to load.</div>';
+            setFrameHeight(120);
+            return;
+          }
+
+          Plotly.react(plot, figure.data || [], figure.layout || {}, config)
+            .then(function () {
+              plot.removeAllListeners("plotly_click");
+              plot.on("plotly_click", function (eventData) {
+                const pt =
+                  eventData &&
+                  eventData.points &&
+                  eventData.points.length > 0
+                    ? eventData.points[0]
+                    : null;
+                if (!pt) return;
+
+                clickCounter += 1;
+                setComponentValue({
+                  id: safeGet(pt, "id", null),
+                  label: safeGet(pt, "label", null),
+                  parent: safeGet(pt, "parent", null),
+                  point_number: safeGet(pt, "pointNumber", safeGet(pt, "point_number", null)),
+                  point_index: safeGet(pt, "pointIndex", safeGet(pt, "point_index", null)),
+                  customdata: safeGet(pt, "customdata", null),
+                  click_counter: clickCounter,
+                });
+              });
+
+              const height = Number(safeGet(args, "height", 760));
+              setFrameHeight(Number.isFinite(height) ? height : 760);
+            })
+            .catch(function () {
+              plot.innerHTML = '<div style="padding:12px;color:#b91c1c;font-family:sans-serif;">Could not render chart.</div>';
+              setFrameHeight(120);
+            });
+        }
+
+        window.addEventListener("message", function (event) {
+          const data = event.data || {};
+          if (data.type !== "streamlit:render") return;
+          renderFigure(safeGet(data, "args", {}));
+        });
+
+        sendMessage("streamlit:componentReady", { apiVersion: 1 });
+        setFrameHeight(760);
+      })();
+    </script>
+  </body>
+</html>
