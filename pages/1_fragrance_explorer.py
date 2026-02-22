@@ -26,6 +26,16 @@ def main() -> None:
     st.markdown(
         """
         <style>
+        :root {
+            --surface: #ffffff;
+            --surface-soft: #f8fafc;
+            --border-subtle: #e5e7eb;
+            --text-strong: #111827;
+            --text-muted: #64748b;
+            --accent: #0f766e;
+            --accent-hover: #115e59;
+        }
+
         /* Sidebar styling */
         section[data-testid="stSidebar"] {
             background-color: #f8f9fa;
@@ -84,6 +94,12 @@ def main() -> None:
             line-height: 1.6;
         }
 
+        .toolbar-note {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin: 0.25rem 0 0.75rem;
+        }
+
         /* Sidebar header */
         section[data-testid="stSidebar"] h2 {
             color: #374151;
@@ -111,9 +127,67 @@ def main() -> None:
             box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
         }
 
-        /* Make columns responsive */
+        div[data-testid="stMetric"] {
+            background: var(--surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: 14px;
+            padding: 0.8rem 1rem;
+            min-height: 128px;
+        }
+
+        div[data-testid="stMetricLabel"] p {
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        div[data-testid="stMetricValue"] {
+            color: var(--text-strong);
+        }
+
+        div[data-testid="stButton"] > button {
+            border-radius: 999px;
+            font-weight: 600;
+            min-height: 2.75rem;
+            border: 1px solid #cbd5e1;
+            background: var(--surface);
+            color: var(--text-strong);
+            width: 100%;
+        }
+
+        div[data-testid="stButton"] > button:hover {
+            border-color: #94a3b8;
+            background: #f8fafc;
+            color: var(--text-strong);
+        }
+
+        div[data-testid="stButton"] > button[kind="primary"] {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #ffffff;
+        }
+
+        div[data-testid="stButton"] > button[kind="primary"]:hover {
+            background: var(--accent-hover);
+            border-color: var(--accent-hover);
+            color: #ffffff;
+        }
+
+        div[data-testid="stToggle"] label p {
+            font-weight: 600;
+            color: var(--text-strong);
+        }
+
+        /* Base column transitions */
         [data-testid="column"] {
             transition: all 0.3s ease;
+        }
+
+        @media (max-width: 980px) {
+            .main .block-container {
+                padding-left: 1rem;
+                padding-right: 1rem;
+            }
+
         }
         </style>
         """,
@@ -158,8 +232,19 @@ def main() -> None:
         st.markdown("### 💡 Tip")
         st.markdown("Click on any data point to open the perfume's Fragrantica page.")
 
-    # --- Summary metrics above the plot ---
-    brand_df = df[df["brand"] == selected_brand]
+    # --- Sex filter state (initialise once; persists across reruns) ---
+    for _k, _v in [("sex_women", True), ("sex_unisex", True), ("sex_men", True)]:
+        if _k not in st.session_state:
+            st.session_state[_k] = _v
+
+    selected_sexes = (
+        (["women"] if st.session_state.sex_women else [])
+        + (["unisex"] if st.session_state.sex_unisex else [])
+        + (["men"] if st.session_state.sex_men else [])
+    )
+
+    # --- Summary metrics and filters ---
+    brand_df = df[(df["brand"] == selected_brand) & (df["sex"].isin(selected_sexes))]
     total_frags = int(len(brand_df))
     # Guard against empty slice; ratings are coerced to numeric in load_data
     if total_frags > 0:
@@ -169,39 +254,66 @@ def main() -> None:
         high_rating_count = 0
         pct_high = 0.0
 
-    mcol1, mcol2 = st.columns(2)
-    with mcol1:
-        st.metric(label="Number of fragrances", value=f"{total_frags}")
-    with mcol2:
-        st.metric(label="Rating ≥ 4.0", value=f"{pct_high:.1%}")
-
     # --- Vote threshold filter (show top fragrances by default) ---
     # Reset to filtered view when brand changes
     if "prev_brand" not in st.session_state or st.session_state.prev_brand != selected_brand:
         st.session_state.prev_brand = selected_brand
         st.session_state.show_all = False
 
-    # Button toggles between views
-    if not st.session_state.show_all:
-        if st.button("👁 Show all fragrances"):
-            st.session_state.show_all = True
+    mcol1, mcol2 = st.columns(2)
+    with mcol1:
+        st.metric(label="Number of fragrances", value=f"{total_frags}")
+    with mcol2:
+        st.metric(label="Rating ≥ 4.0", value=f"{pct_high:.1%}")
+
+    st.markdown('<p class="toolbar-note">Metrics are calculated within current filters.</p>', unsafe_allow_html=True)
+
+    ctrl0, ctrl1, ctrl2, ctrl3 = st.columns([2.2, 1, 1, 1])
+
+    with ctrl0:
+        st.toggle("👁 Show all fragrances", key="show_all")
+
+    with ctrl1:
+        women_label = "✓ Women" if st.session_state.sex_women else "Women"
+        if st.button(
+            women_label,
+            key="women_filter",
+            type="primary" if st.session_state.sex_women else "secondary",
+        ):
+            st.session_state.sex_women = not st.session_state.sex_women
             st.rerun()
-    else:
-        if st.button("🔍 Show top fragrances"):
-            st.session_state.show_all = False
+
+    with ctrl2:
+        unisex_label = "✓ Unisex" if st.session_state.sex_unisex else "Unisex"
+        if st.button(
+            unisex_label,
+            key="unisex_filter",
+            type="primary" if st.session_state.sex_unisex else "secondary",
+        ):
+            st.session_state.sex_unisex = not st.session_state.sex_unisex
+            st.rerun()
+
+    with ctrl3:
+        men_label = "✓ Men" if st.session_state.sex_men else "Men"
+        if st.button(
+            men_label,
+            key="men_filter",
+            type="primary" if st.session_state.sex_men else "secondary",
+        ):
+            st.session_state.sex_men = not st.session_state.sex_men
             st.rerun()
 
     # Filter low-vote fragrances (30th percentile threshold) for the plot only
-    vote_threshold = brand_df["votes"].quantile(0.30)
+    vote_threshold = float(brand_df["votes"].quantile(0.30)) if total_frags > 0 else 0.0
 
     if not st.session_state.show_all:
-        shown = int((brand_df["votes"] >= vote_threshold).sum())
+        shown = int((brand_df["votes"] >= vote_threshold).sum()) if total_frags > 0 else 0
         st.caption(f"Showing {shown} of {total_frags} fragrances (votes ≥ {vote_threshold:.0f})")
-        mask = (df["brand"] == selected_brand) & (df["votes"] >= vote_threshold)
+        mask = (df["brand"] == selected_brand) & (df["sex"].isin(selected_sexes)) & (df["votes"] >= vote_threshold)
         df_plot = df[mask | (df["brand"] != selected_brand)].copy()
     else:
         st.caption(f"Showing all {total_frags} fragrances")
-        df_plot = df
+        df_plot = df[df["sex"].isin(selected_sexes) | (df["brand"] != selected_brand)].copy()
 
     # Create centered plot container
     fig = make_figure(df_plot, selected_brand)
@@ -256,7 +368,7 @@ def main() -> None:
         try {
           var url = data && data.points && data.points[0] && data.points[0].customdata;
           if (Array.isArray(url)) { url = url[0]; }
-          if (url && typeof url === 'string' && /^https?:\/\//.test(url)) {
+          if (url && typeof url === 'string' && /^https?:\\/\\//.test(url)) {
             window.open(url, '_blank', 'noopener');
           }
         } catch (e) { console && console.log && console.log(e); }
