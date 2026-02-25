@@ -226,7 +226,7 @@ def main() -> None:
     with col_d:
         st.markdown(
             f"""
-            <a href="/fragrance_woman_unisex_men" target="_self" class="launch-btn variant-d">
+            <a href="/fragrance_shelf" target="_self" class="launch-btn variant-d">
                 <div class="lb-icon">{shelf_icon_tag}</div>
                 <div class="lb-title">Your Fragrance Shelf</div>
                 <div class="lb-desc">

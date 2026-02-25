@@ -14,6 +14,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 
 from src.sunburst_component import render_sunburst_click
 
@@ -233,10 +234,8 @@ def _apply_sunburst_selection(event_state: Any, point_lookup: dict[int, dict[str
     st.session_state.fw_selected_family = selected_family
 
     if selected_category:
-        st.session_state.fw_show_all_subcategories = False
         st.session_state.fw_selected_subcategory = selected_category
     else:
-        st.session_state.fw_show_all_subcategories = True
         if previous_family != selected_family:
             st.session_state.fw_selected_subcategory = None
 
@@ -342,7 +341,7 @@ def _build_sunburst(cat_counts: pd.DataFrame) -> tuple[go.Figure, dict[int, dict
     custom_rows: list[list[str]] = []
 
     ids.append("All")
-    labels.append("All")
+    labels.append("Fragrance Wheel")
     parents.append("")
     values.append(total)
     colors.append("#ffffff")
@@ -409,8 +408,8 @@ def _build_sunburst(cat_counts: pd.DataFrame) -> tuple[go.Figure, dict[int, dict
 
     fig.update_layout(
         title=dict(
-            text="Fragrance Families and Categories - Sunburst",
-            font=dict(size=18),
+            text="Fragrance Families and Categories Whell",
+            font=dict(size=22),
             x=0.5,
         ),
         margin=dict(t=60, l=0, r=0, b=0),
@@ -433,12 +432,183 @@ def _render_clickable_sunburst(fig: go.Figure) -> Any:
     )
 
 
+@st.fragment
+def _render_subcategory_section(family_df: pd.DataFrame, selected_family: str) -> None:
+    """Fragment: reruns only when subcategory/toggle changes, not on full-page reruns."""
+    subcategories = sorted(
+        family_df["fragrance_category"].dropna().astype(str).str.strip().unique().tolist()
+    )
+    if not subcategories:
+        st.warning("No subcategories found for the selected family.")
+        return
+
+    subcategory_options = _build_subcategory_options(subcategories)
+
+    if st.session_state.fw_selected_subcategory not in subcategory_options:
+        st.session_state.fw_selected_subcategory = subcategory_options[0]
+
+    def _on_subcategory_change() -> None:
+        new_sub = st.session_state.fw_selected_subcategory
+        if st.session_state.get("fc_prev_subcategory") != new_sub:
+            st.session_state.fc_show_all = False
+            st.session_state.fc_prev_subcategory = new_sub
+
+    sel_col, _ = st.columns([4, 3])
+    with sel_col:
+        st.selectbox(
+            "Subcategory",
+            options=subcategory_options,
+            key="fw_selected_subcategory",
+            on_change=_on_subcategory_change,
+        )
+
+    active_subcategory = st.session_state.fw_selected_subcategory
+    df_family_plot = _filter_by_subcategory_option(family_df, active_subcategory)
+
+    total_frags = int(len(df_family_plot))
+    high_rating_count = int((df_family_plot["rating"] >= 4.0).sum()) if total_frags else 0
+    pct_high = (high_rating_count / total_frags) if total_frags else 0.0
+    total_votes = float(df_family_plot["votes"].sum()) if total_frags else 0.0
+    weighted_avg = (
+        float((df_family_plot["rating"] * df_family_plot["votes"]).sum() / total_votes)
+        if total_votes > 0
+        else None
+    )
+    weighted_avg_display = f"{weighted_avg:.2f}" if weighted_avg is not None else "N/A"
+
+    vote_quantile = 0.50 if total_votes > 150_000 else 0.30
+    vote_threshold = float(df_family_plot["votes"].quantile(vote_quantile)) if total_frags > 0 else 0.0
+
+    mcol1, mcol2, mcol3 = st.columns(3)
+    with mcol1:
+        st.metric(label="Number of fragrances", value=f"{total_frags}")
+    with mcol2:
+        st.metric(label="Rating ≥ 4.0", value=f"{pct_high:.1%}")
+    with mcol3:
+        st.metric(label="Weighted avg rating", value=weighted_avg_display)
+
+    ctrl_col, _ = st.columns([2.2, 3.8])
+    with ctrl_col:
+        st.toggle("👁 Show all fragrances", key="fc_show_all")
+
+    if not st.session_state.fc_show_all:
+        shown = int((df_family_plot["votes"] >= vote_threshold).sum()) if total_frags > 0 else 0
+        filter_caption = f"Showing {shown} of {total_frags} fragrances (votes ≥ {vote_threshold:.0f})"
+        df_plot = df_family_plot[df_family_plot["votes"] >= vote_threshold].copy()
+    else:
+        filter_caption = f"Showing all {total_frags} fragrances"
+        df_plot = df_family_plot
+
+    st.caption(filter_caption)
+
+    if df_plot.empty:
+        st.info("No fragrances match the current subcategory filter.")
+    else:
+        family_fig = _build_family_scatter(df_plot, selected_family, active_subcategory)
+        fig_html = family_fig.to_html(
+            include_plotlyjs="cdn",
+            full_html=False,
+            config={
+                "responsive": True,
+                "displayModeBar": True,
+                "displaylogo": False,
+                "modeBarButtonsToRemove": ["pan2d", "lasso2d", "select2d"],
+            },
+        )
+        components.html(fig_html, height=950, scrolling=False)
+
+
+FAMILY_OPTION_SUFFIX = " Family (All)"
+
+
+def _normalise_label(value: Any) -> str:
+    """Normalize labels for robust case/spacing-insensitive comparisons."""
+    return " ".join(str(value or "").strip().lower().split())
+
+
+def _is_family_option(option: str) -> bool:
+    """Return True if *option* is a family-level select-all entry."""
+    return isinstance(option, str) and option.strip().endswith(FAMILY_OPTION_SUFFIX)
+
+
+def _family_from_option(option: str) -> str:
+    """'Woody Family (All)' -> 'Woody'."""
+    trimmed = str(option or "").strip()
+    if trimmed.endswith(FAMILY_OPTION_SUFFIX):
+        return trimmed[: -len(FAMILY_OPTION_SUFFIX)].strip()
+    return trimmed
+
+
+def _build_subcategory_options(categories: list[str]) -> list[str]:
+    """Prepend dynamically-derived family options to the individual category list.
+
+    Family names are inferred from the first token of each category value, so
+    nothing is hard-coded.  Example:
+        ["Woody", "Woody Aquatic", "Woody Aromatic"]
+        -> ["Woody Family (All)", "Woody", "Woody Aquatic", "Woody Aromatic"]
+    """
+    families_seen: dict[str, str] = {}
+    cleaned_categories: list[str] = []
+    seen_categories: set[str] = set()
+
+    for raw_cat in categories:
+        cat = " ".join(str(raw_cat or "").strip().split())
+        if not cat:
+            continue
+
+        cat_norm = _normalise_label(cat)
+        if cat_norm in seen_categories:
+            continue
+        seen_categories.add(cat_norm)
+        cleaned_categories.append(cat)
+
+        first_token = cat.split()[0]
+        token_norm = _normalise_label(first_token)
+        if token_norm and token_norm not in families_seen:
+            families_seen[token_norm] = first_token
+
+    family_opts = sorted(
+        f"{family_name}{FAMILY_OPTION_SUFFIX}" for family_name in families_seen.values()
+    )
+    return family_opts + cleaned_categories
+
+
+def _filter_by_subcategory_option(df: pd.DataFrame, option: str) -> pd.DataFrame:
+    """Filter *df* by subcategory dropdown option.
+
+    * Family option (e.g. 'Woody Family (All)'): keeps rows where fragrance_category
+      equals the family name *or* starts with it followed by a space.
+    * Normal option: exact match on fragrance_category.
+    Both comparisons are case-insensitive and whitespace-trimmed.
+    """
+    if df.empty:
+        return df.copy()
+
+    option_norm = _normalise_label(option)
+    if not option_norm:
+        return df.copy()
+
+    normalised = (
+        df["fragrance_category"]
+        .fillna("")
+        .astype(str)
+        .map(_normalise_label)
+    )
+
+    if _is_family_option(option):
+        family_norm = _normalise_label(_family_from_option(option))
+        mask = normalised.eq(family_norm) | normalised.str.startswith(f"{family_norm} ")
+        return df[mask].copy()
+
+    return df[normalised.eq(option_norm)].copy()
+
+
 def _init_state() -> None:
     defaults = {
         "fw_selected_family": None,
         "fw_selected_subcategory": None,
-        "fw_show_all_subcategories": True,
         "fw_last_sunburst_signature": None,
+        "fc_show_all": False,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -453,8 +623,45 @@ def main() -> None:
         initial_sidebar_state="expanded",
     )
 
+    st.markdown(
+        """
+        <style>
+        :root {
+            --surface: #ffffff;
+            --border-subtle: #e5e7eb;
+            --text-strong: #111827;
+            --text-muted: #64748b;
+        }
+
+        div[data-testid="stMetric"] {
+            background: var(--surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: 14px;
+            padding: 0.8rem 1rem;
+            min-height: 128px;
+        }
+
+        div[data-testid="stMetricLabel"] p {
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        div[data-testid="stMetricValue"] {
+            color: var(--text-strong);
+        }
+
+        /* Constrain dropdown height to prevent browser scroll-to-fit jumps */
+        div[data-baseweb="popover"] ul,
+        ul[data-baseweb="menu"],
+        div[role="listbox"] ul {
+            max-height: 400px !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     st.title("Fragrance Categories Explorer")
-    st.markdown("Family-level and category-level composition based on `fragrance_category`.")
 
     if not MASTER_CSV.exists():
         st.error(f"Data file not found: `{MASTER_CSV}`")
@@ -472,16 +679,7 @@ def main() -> None:
         st.warning("No fragrance categories available to plot.")
         st.stop()
 
-    total = int(cat_counts["count"].sum())
-    unique_categories = int(cat_counts["category"].nunique())
-    unique_families = int(cat_counts["family"].nunique())
-
-    mc1, mc2, mc3 = st.columns(3)
-    mc1.metric("Perfumes with category", f"{total:,}")
-    mc2.metric("Distinct categories", f"{unique_categories:,}")
-    mc3.metric("Families represented", f"{unique_families:,}")
-
-    st.caption("Click any family or category segment to explore all fragrances in that family below.")
+    st.caption("Click a scent family to explore its fragrances and subcategories.")
 
     fig, point_lookup = _build_sunburst(cat_counts)
     sunburst_event = _render_clickable_sunburst(fig)
@@ -498,74 +696,7 @@ def main() -> None:
         if family_df.empty:
             st.warning("No fragrance records with valid rating/votes found for this family.")
         else:
-            subcategories = sorted(family_df["fragrance_category"].dropna().astype(str).str.strip().unique().tolist())
-            if not subcategories:
-                st.warning("No subcategories found for the selected family.")
-            else:
-                if st.session_state.fw_selected_subcategory not in subcategories:
-                    st.session_state.fw_selected_subcategory = subcategories[0]
-
-                ctrl1, ctrl2 = st.columns([2.2, 3.8])
-                with ctrl1:
-                    st.toggle("👁 All subcategories", key="fw_show_all_subcategories")
-                with ctrl2:
-                    st.selectbox(
-                        "Subcategory",
-                        options=subcategories,
-                        key="fw_selected_subcategory",
-                        disabled=st.session_state.fw_show_all_subcategories,
-                    )
-
-                if st.session_state.fw_show_all_subcategories:
-                    df_family_plot = family_df
-                    filter_caption = (
-                        f"Showing all {len(df_family_plot)} fragrances across {len(subcategories)} subcategories"
-                    )
-                    active_subcategory = None
-                else:
-                    active_subcategory = st.session_state.fw_selected_subcategory
-                    df_family_plot = family_df[family_df["fragrance_category"] == active_subcategory].copy()
-                    filter_caption = f"Showing {len(df_family_plot)} fragrances in {active_subcategory}"
-
-                total_frags = int(len(df_family_plot))
-                high_rating_count = int((df_family_plot["rating"] >= 4.0).sum()) if total_frags else 0
-                pct_high = (high_rating_count / total_frags) if total_frags else 0.0
-                total_votes = float(df_family_plot["votes"].sum()) if total_frags else 0.0
-                weighted_avg = (
-                    float((df_family_plot["rating"] * df_family_plot["votes"]).sum() / total_votes)
-                    if total_votes > 0
-                    else None
-                )
-                weighted_avg_display = f"{weighted_avg:.2f}" if weighted_avg is not None else "N/A"
-
-                mcol1, mcol2, mcol3 = st.columns(3)
-                with mcol1:
-                    st.metric(label="Number of fragrances", value=f"{total_frags}")
-                with mcol2:
-                    st.metric(label="Rating ≥ 4.0", value=f"{pct_high:.1%}")
-                with mcol3:
-                    st.metric(label="Weighted avg rating", value=weighted_avg_display)
-
-                st.caption("Metrics are calculated within current filters.")
-                st.caption(filter_caption)
-
-                if df_family_plot.empty:
-                    st.info("No fragrances match the current subcategory filter.")
-                else:
-                    family_fig = _build_family_scatter(df_family_plot, selected_family, active_subcategory)
-                    st.plotly_chart(
-                        family_fig,
-                        use_container_width=True,
-                        config={
-                            "displaylogo": False,
-                            "modeBarButtonsToRemove": ["pan2d", "lasso2d", "select2d"],
-                        },
-                    )
-
-    with st.expander("Category counts table"):
-        table_df = cat_counts.sort_values("count", ascending=False).reset_index(drop=True)
-        st.dataframe(table_df, use_container_width=True, hide_index=True)
-
+            _render_subcategory_section(family_df, selected_family)
 
 if __name__ == "__main__":
     main()
