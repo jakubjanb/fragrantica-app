@@ -28,6 +28,31 @@ def _percentile_color(t: float) -> str:
     return f"rgb({r},{g},{bl})"
 
 
+def _bar_cell(
+    val: float,
+    col_min: float,
+    col_max: float,
+    fmt: str,
+    *,
+    height_px: int = 28,
+) -> str:
+    """Return HTML for a value-over-bar cell used in Top-10 style tables."""
+    t = 0.5 if col_max == col_min else max(0.0, min(1.0, (val - col_min) / (col_max - col_min)))
+    color = _percentile_color(t)
+    bar_color = color.replace("rgb", "rgba").replace(")", ",0.22)")
+    width_pct = max(t * 100, 2)
+    formatted = escape(fmt.format(val))
+    return (
+        f'<div style="position:relative; height:{height_px}px; line-height:{height_px}px;">'
+        f'<div style="position:absolute; top:2px; bottom:2px; left:0;'
+        f' width:{width_pct:.1f}%; background:{bar_color};'
+        f' border-radius:4px;"></div>'
+        f'<span style="position:relative; z-index:1; padding-left:6px;'
+        f' font-size:13px; color:#1a1a1a;">{formatted}</span>'
+        f'</div>'
+    )
+
+
 def render_top_fragrances_table(display_df) -> None:
     """Render a styled Top-10 table with the same visual language as Brand data table."""
     if display_df.empty:
@@ -42,22 +67,6 @@ def render_top_fragrances_table(display_df) -> None:
         col: (float(display_df[col].min()), float(display_df[col].max()))
         for col in bar_cols
     }
-
-    def _bar_cell(val: float, col_min: float, col_max: float, fmt: str) -> str:
-        t = 0.5 if col_max == col_min else max(0.0, min(1.0, (val - col_min) / (col_max - col_min)))
-        color = _percentile_color(t)
-        bar_color = color.replace("rgb", "rgba").replace(")", ",0.22)")
-        width_pct = max(t * 100, 2)
-        formatted = fmt.format(val)
-        return (
-            f'<div style="position:relative; height:28px; line-height:28px;">'
-            f'<div style="position:absolute; top:2px; bottom:2px; left:0;'
-            f' width:{width_pct:.1f}%; background:{bar_color};'
-            f' border-radius:4px;"></div>'
-            f'<span style="position:relative; z-index:1; padding-left:6px;'
-            f' font-size:13px; color:#1a1a1a;">{formatted}</span>'
-            f'</div>'
-        )
 
     header = "".join(
         f'<th style="text-align:left; padding:10px 12px; font-size:13px;'
