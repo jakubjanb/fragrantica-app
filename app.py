@@ -230,7 +230,7 @@ def main() -> None:
                 <div class="lb-icon">{shelf_icon_tag}</div>
                 <div class="lb-title">Your Fragrance Shelf</div>
                 <div class="lb-desc">
-                    Explore fragrances by target audience — compare ratings across women's, unisex, and men's perfumes.
+                    Save your own fragrances to get personalized recommendations.
                 </div>
                 <div class="lb-arrow">Open Gender View →</div>
             </a>
