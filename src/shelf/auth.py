@@ -8,7 +8,11 @@ from pathlib import Path
 from typing import Any
 
 import streamlit as st
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except Exception:
+    def load_dotenv(*args: object, **kwargs: object) -> bool:
+        return False
 
 from src.shelf.utils import _dict_get, _normalize_text
 
