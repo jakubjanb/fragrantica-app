@@ -10,6 +10,7 @@ MVP features:
 
 from __future__ import annotations
 
+import html
 import os
 from pathlib import Path
 from typing import Any
@@ -251,6 +252,37 @@ def _inject_page_styles() -> None:
             color: var(--text-strong);
         }
 
+        .account-dock {
+            border: 1px solid var(--border-subtle);
+            border-radius: 14px;
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            padding: 0.65rem 0.8rem;
+        }
+
+        .account-dock-label {
+            margin: 0 0 0.25rem;
+            color: #64748b;
+            font-size: 0.68rem;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            font-weight: 700;
+        }
+
+        .account-dock-email {
+            margin: 0;
+            color: #0f172a;
+            font-size: 0.9rem;
+            font-weight: 600;
+            line-height: 1.3;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .account-dock-spacer {
+            height: 0.45rem;
+        }
+
         @media (max-width: 980px) {
             .main .block-container {
                 padding-left: 1rem;
@@ -375,6 +407,20 @@ def _clear_auth_session() -> None:
         st.session_state.pop(key, None)
 
 
+def _sign_out_user() -> None:
+    try:
+        sb = get_supabase_client()
+        try:
+            sb.auth.sign_out()
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+    _clear_auth_session()
+    st.rerun()
+
+
 def _save_auth_session(auth_response: Any) -> str | None:
     session = _dict_get(auth_response, "session")
     user = _dict_get(auth_response, "user")
@@ -395,7 +441,27 @@ def _save_auth_session(auth_response: Any) -> str | None:
     return None
 
 
-def auth_block() -> str | None:
+def auth_block(compact_logged_in: bool = False) -> str | None:
+    current_user_id = st.session_state.get("auth_user_id")
+    current_email = st.session_state.get("auth_email")
+
+    if current_user_id and compact_logged_in:
+        label = _normalize_text(current_email) or str(current_user_id)
+        safe_label = html.escape(label)
+        st.markdown(
+            f"""
+            <div class="account-dock">
+                <p class="account-dock-label">Account</p>
+                <p class="account-dock-email" title="{safe_label}">{safe_label}</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown('<div class="account-dock-spacer"></div>', unsafe_allow_html=True)
+        if st.button("Sign out", key="shelf_sign_out_compact"):
+            _sign_out_user()
+        return str(current_user_id)
+
     st.subheader("Account")
     st.markdown(
         '<p class="section-note">Sign in to save your shelf, ratings, and personalized recommendations.</p>',
@@ -403,26 +469,14 @@ def auth_block() -> str | None:
     )
 
     with st.container(border=True):
-        current_user_id = st.session_state.get("auth_user_id")
-        current_email = st.session_state.get("auth_email")
-
         if current_user_id:
             info_col, action_col = st.columns([4.5, 1.2])
             with info_col:
                 label = current_email or str(current_user_id)
                 st.success(f"Signed in as: {label}")
             with action_col:
-                if st.button("Sign out", use_container_width=True):
-                    try:
-                        sb = get_supabase_client()
-                        try:
-                            sb.auth.sign_out()
-                        except Exception:
-                            pass
-                    except Exception:
-                        pass
-                    _clear_auth_session()
-                    st.rerun()
+                if st.button("Sign out", use_container_width=True, key="shelf_sign_out_full"):
+                    _sign_out_user()
             return str(current_user_id)
 
         tab_login, tab_signup = st.tabs(["Sign in", "Create account"])
@@ -1590,10 +1644,20 @@ def main() -> None:
     )
     _inject_page_styles()
     st.title("Your Fragrance Shelf")
-    st.markdown(
-        '<p class="subtitle">Build your personal shelf, save your ratings, and discover recommendations tailored to your collection.</p>',
-        unsafe_allow_html=True,
+    subtitle_html = (
+        '<p class="subtitle">Build your personal shelf, save your ratings, and discover '
+        "recommendations tailored to your collection.</p>"
     )
+
+    if st.session_state.get("auth_user_id"):
+        intro_col, account_col = st.columns([5.4, 1.8], gap="large")
+        with intro_col:
+            st.markdown(subtitle_html, unsafe_allow_html=True)
+        with account_col:
+            user_id = auth_block(compact_logged_in=True)
+    else:
+        st.markdown(subtitle_html, unsafe_allow_html=True)
+        user_id = None
 
     try:
         df_catalog = load_catalog_df()
@@ -1601,7 +1665,8 @@ def main() -> None:
         st.error(f"Could not load fragrance catalog: {exc}")
         return
 
-    user_id = auth_block()
+    if not user_id:
+        user_id = auth_block()
 
     if not user_id:
         st.info("Sign in to save your shelf and get personalized recommendations.")
