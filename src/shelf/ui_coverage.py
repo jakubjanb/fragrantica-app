@@ -100,7 +100,7 @@ def _render_coverage(df_shelf_enriched: pd.DataFrame) -> None:
     )
 
     st.plotly_chart(fig, use_container_width=True)
-    st.caption("Hover segments to explore subcategories. Empty (grey) segments indicate uncovered families.")
+    st.caption("Hover segments to explore categories. Empty (grey) segments indicate uncovered families.")
 
     counts_lookup: dict[str, int] = dict(
         zip(stats["family_counts"]["family"], stats["family_counts"]["count"])

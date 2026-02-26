@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from src.shelf.constants import FAMILY_COLORS, FAMILY_KEYWORDS, FAMILY_ORDER, SUBCATEGORY_MAP
+from src.shelf.constants import FAMILY_COLORS, FAMILY_KEYWORDS, FAMILY_ORDER
 from src.shelf.utils import _item_key, _lower_or_empty, _normalize_sex
 
 
@@ -232,36 +232,34 @@ def _lighten_hex(hex_color: str, factor: float = 0.45) -> str:
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
+def _normalize_category_label(value: Any) -> str:
+    """Normalize category label by trimming and collapsing repeated whitespace."""
+    text = str(value).strip()
+    if not text:
+        return ""
+    return " ".join(text.split())
+
+
 def _build_sunburst_data(df_shelf_enriched: pd.DataFrame) -> dict[str, Any]:
     """
     Build the ids/labels/parents/values/colors/customdata arrays for a
     two-ring Plotly Sunburst chart.
 
     Inner ring  - one segment per family in FAMILY_ORDER.
-    Outer ring  - subcategory breakdown; empty families get a phantom grey
+    Outer ring  - category breakdown; empty families get a phantom grey
                   child so their inner-ring sector stays visible.
     """
     _EMPTY_COLOR = "#e8ecef"
     _EMPTY_CHILD_COLOR = "#f1f4f6"
 
-    # Accumulate subcategory counts.
+    # Accumulate category counts per family.
     family_to_subcats: dict[str, dict[str, int]] = {f: {} for f in FAMILY_ORDER}
 
     if not df_shelf_enriched.empty and "fragrance_category" in df_shelf_enriched.columns:
         for cat_raw in df_shelf_enriched["fragrance_category"].fillna(""):
-            cat = str(cat_raw).strip()
+            cat = _normalize_category_label(cat_raw)
             family = compute_family(cat)
-            cat_lower = cat.lower()
-
-            subcat_found: str | None = None
-            if family in SUBCATEGORY_MAP:
-                for subcat_name, keywords in SUBCATEGORY_MAP[family].items():
-                    if keywords and any(kw in cat_lower for kw in keywords):
-                        subcat_found = subcat_name
-                        break
-
-            if subcat_found is None:
-                subcat_found = "Uncategorized" if family == "Other" else f"Other {family}"
+            subcat_found = cat if cat else "Uncategorized"
 
             subcat_dict = family_to_subcats[family]
             subcat_dict[subcat_found] = subcat_dict.get(subcat_found, 0) + 1
@@ -308,7 +306,10 @@ def _build_sunburst_data(df_shelf_enriched: pd.DataFrame) -> dict[str, Any]:
             customdata.append({"family": family, "count": family_count, "total": total_items, "is_empty": False})
 
             subcat_color = _lighten_hex(fam_color, 0.42)
-            for subcat_name, subcat_count in subcat_counts.items():
+            for subcat_name, subcat_count in sorted(
+                subcat_counts.items(),
+                key=lambda item: (-item[1], item[0].lower()),
+            ):
                 ids.append(f"{fam_id}::{subcat_name}")
                 labels.append(subcat_name)
                 parents.append(fam_id)
