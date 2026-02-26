@@ -10,7 +10,6 @@ MVP features:
 
 from __future__ import annotations
 
-from html import escape
 import os
 from pathlib import Path
 from typing import Any
@@ -57,6 +56,84 @@ FAMILY_KEYWORDS: dict[str, list[str]] = {
     "Fruity": ["fruity", "fruit", "apple", "pear", "berry", "peach", "plum"],
     "Gourmand": ["gourmand", "vanilla", "caramel", "chocolate", "sweet", "coffee", "cacao"],
     "Fresh": ["fresh", "aquatic", "marine", "ozonic", "clean", "aldehydic", "soapy"],
+}
+
+# Subcategory keyword mapping for the sunburst outer ring.
+# Order of keys matters: first match wins.
+SUBCATEGORY_MAP: dict[str, dict[str, list[str]]] = {
+    "Floral": {
+        "White Floral": ["white floral", "white flower"],
+        "Rose": ["rose"],
+        "Fresh Floral": ["fresh floral"],
+        "Soft Floral": ["soft floral", "powdery"],
+        "Green Floral": ["green floral", "iris", "violet"],
+    },
+    "Woody": {
+        "Woody Aromatic": ["woody aromatic", "aromatic woody"],
+        "Woody Oriental": ["woody oriental"],
+        "Sandalwood": ["sandalwood"],
+        "Cedar/Oud": ["cedar", "oud"],
+        "Dry Wood": ["dry wood", "vetiver", "patchouli"],
+    },
+    "Oriental": {
+        "Oriental Floral": ["oriental floral", "floral oriental"],
+        "Oriental Woody": ["oriental woody"],
+        "Soft Oriental": ["soft oriental"],
+        "Spicy Oriental": ["spicy oriental", "spice"],
+    },
+    "Fresh": {
+        "Aquatic/Marine": ["aquatic", "marine", "ozonic", "water"],
+        "Aldehydic": ["aldehydic", "soapy"],
+        "Citrus Fresh": ["citrus"],
+        "Green Fresh": ["green"],
+    },
+    "Citrus": {
+        "Aromatic Citrus": ["aromatic citrus"],
+        "Fruity Citrus": ["fruity citrus"],
+        "Hesperidic": ["bergamot", "lemon", "orange", "grapefruit", "lime", "mandarin", "hesperidic"],
+    },
+    "Aromatic": {
+        "Aromatic Fougère": ["fougere", "fougère"],
+        "Aromatic Herbal": ["herbal", "lavender"],
+        "Aromatic Spicy": ["spicy"],
+    },
+    "Chypre": {
+        "Floral Chypre": ["floral chypre"],
+        "Fruity Chypre": ["fruity chypre"],
+        "Aromatic Chypre": ["aromatic chypre"],
+    },
+    "Fruity": {
+        "Tropical Fruity": ["tropical", "mango", "passion"],
+        "Berry Fruity": ["berry", "strawberry", "raspberry", "blackcurrant"],
+        "Peach/Apple": ["peach", "apple", "pear", "apricot"],
+    },
+    "Gourmand": {
+        "Sweet/Vanilla": ["vanilla", "sweet"],
+        "Chocolate/Coffee": ["chocolate", "coffee", "cacao"],
+        "Caramel": ["caramel", "butterscotch"],
+    },
+    "Leather": {
+        "Smoky Leather": ["smoky", "tobacco"],
+        "Suede": ["suede"],
+        "Animalic": ["animalic", "musk"],
+    },
+    "Other": {
+        "Uncategorized": [],
+    },
+}
+
+FAMILY_COLORS: dict[str, str] = {
+    "Floral":    "#e879a0",
+    "Woody":     "#a0714f",
+    "Citrus":    "#d4a017",
+    "Oriental":  "#9b59b6",
+    "Fresh":     "#38bdf8",
+    "Aromatic":  "#6b9e5e",
+    "Chypre":    "#2d7d4f",
+    "Fruity":    "#f4845f",
+    "Gourmand":  "#c9882a",
+    "Leather":   "#8b6914",
+    "Other":     "#94a3b8",
 }
 
 
@@ -809,7 +886,7 @@ def coverage_stats(df_shelf_with_catalog: pd.DataFrame) -> dict[str, Any]:
 def _render_add_form(user_id: str, df_catalog: pd.DataFrame) -> None:
     st.subheader("Add fragrance")
     st.markdown(
-        '<p class="section-note">Search the catalog and save fragrances to your personal shelf.</p>',
+        '<p class="section-note">Filter by brand, search quickly, and add fragrances to your personal shelf.</p>',
         unsafe_allow_html=True,
     )
 
@@ -817,25 +894,116 @@ def _render_add_form(user_id: str, df_catalog: pd.DataFrame) -> None:
         st.warning("The fragrance catalog is empty.")
         return
 
-    option_indexes = df_catalog.index.tolist()
+    catalog_df = df_catalog.copy()
+    if "display_label" not in catalog_df.columns:
+        catalog_df["display_label"] = (
+            catalog_df.get("brand", "").fillna("").astype(str).str.strip()
+            + " — "
+            + catalog_df.get("name", "").fillna("").astype(str).str.strip()
+        )
+
+    for col in ("brand", "name", "fragrance_category", "sex", "rating", "votes"):
+        if col not in catalog_df.columns:
+            catalog_df[col] = pd.NA
+
+    catalog_df["brand"] = catalog_df["brand"].fillna("").astype(str).str.strip()
+    catalog_df["name"] = catalog_df["name"].fillna("").astype(str).str.strip()
+    catalog_df["fragrance_category"] = catalog_df["fragrance_category"].fillna("").astype(str).str.strip()
+    catalog_df["display_label"] = catalog_df["display_label"].fillna("").astype(str).str.strip()
+    catalog_df["search_blob"] = (
+        catalog_df["brand"].str.lower()
+        + " "
+        + catalog_df["name"].str.lower()
+        + " "
+        + catalog_df["fragrance_category"].str.lower()
+    )
+
+    brand_options = ["All brands"] + sorted(
+        [b for b in catalog_df["brand"].unique().tolist() if b],
+        key=lambda v: v.casefold(),
+    )
+
+    add_submit = False
     with st.container(border=True):
-        with st.form("add_to_shelf_form", clear_on_submit=True):
-            selected_idx = st.selectbox(
-                "Fragrance",
-                options=option_indexes,
-                format_func=lambda i: str(df_catalog.at[i, "display_label"]),
+        top_col1, top_col2 = st.columns([1.6, 2.4])
+        with top_col1:
+            selected_brand = st.selectbox(
+                "Brand",
+                options=brand_options,
+                key="shelf_add_brand_filter",
+                help="Start typing to get brand suggestions.",
             )
-            opt_col, rating_col, submit_col = st.columns([2.3, 2.2, 1.5])
-            with opt_col:
-                include_rating = st.checkbox("Add personal rating", value=False)
-            with rating_col:
-                rating = st.slider("Rating (1-10)", 1, 10, 7)
-            with submit_col:
-                st.markdown("<div style='height: 1.9rem;'></div>", unsafe_allow_html=True)
-                add_submit = st.form_submit_button("Add to shelf", use_container_width=True, type="primary")
+        with top_col2:
+            search_query = st.text_input(
+                "Quick search",
+                key="shelf_add_query",
+                placeholder="Type fragrance or brand name",
+                help="Filters the fragrance list as you type.",
+            ).strip()
+
+        filtered_catalog = catalog_df.copy()
+        if selected_brand != "All brands":
+            filtered_catalog = filtered_catalog[filtered_catalog["brand"] == selected_brand].copy()
+        if search_query:
+            filtered_catalog = filtered_catalog[
+                filtered_catalog["search_blob"].str.contains(search_query.lower(), na=False)
+            ].copy()
+
+        filtered_catalog = filtered_catalog.sort_values(
+            by=["brand", "name"],
+            ascending=[True, True],
+            kind="mergesort",
+        )
+        st.caption(f"{len(filtered_catalog):,} fragrances match current filters")
+
+        if filtered_catalog.empty:
+            st.info("No fragrances match the selected brand/search filters.")
+            return
+
+        option_indexes = filtered_catalog.index.tolist()
+        selected_idx_key = "shelf_add_selected_idx"
+        if selected_idx_key in st.session_state and st.session_state[selected_idx_key] not in option_indexes:
+            st.session_state.pop(selected_idx_key)
+
+        selected_idx = st.selectbox(
+            "Fragrance",
+            options=option_indexes,
+            key=selected_idx_key,
+            format_func=lambda i: str(filtered_catalog.at[i, "display_label"]),
+            help="Start typing to get fragrance suggestions.",
+        )
+
+        selected_item = filtered_catalog.loc[int(selected_idx)]
+        details: list[str] = []
+        selected_category = _normalize_text(selected_item.get("fragrance_category"))
+        if selected_category:
+            details.append(f"Category: {selected_category}")
+        selected_sex = _format_sex_label(selected_item.get("sex"))
+        if selected_sex:
+            details.append(f"Audience: {selected_sex}")
+
+        fragrantica_rating = pd.to_numeric(pd.Series([selected_item.get("rating")]), errors="coerce").iloc[0]
+        if pd.notna(fragrantica_rating):
+            details.append(f"Fragrantica: {float(fragrantica_rating):.3f}")
+
+        votes_value = pd.to_numeric(pd.Series([selected_item.get("votes")]), errors="coerce").iloc[0]
+        if pd.notna(votes_value):
+            details.append(f"Votes: {int(float(votes_value)):,}")
+
+        if details:
+            st.caption(" | ".join(details))
+
+        opt_col, rating_col, submit_col = st.columns([2.1, 2.2, 1.5])
+        with opt_col:
+            include_rating = st.checkbox("Add personal rating", value=False, key="shelf_add_include_rating")
+        with rating_col:
+            rating = st.slider("Rating (1-10)", 1, 10, 7, key="shelf_add_rating", disabled=not include_rating)
+        with submit_col:
+            st.markdown("<div style='height: 1.9rem;'></div>", unsafe_allow_html=True)
+            add_submit = st.button("Add to shelf", use_container_width=True, type="primary", key="shelf_add_submit")
 
     if add_submit:
-        item = df_catalog.loc[int(selected_idx)].to_dict()
+        item = filtered_catalog.loc[int(selected_idx)].to_dict()
         value = int(rating) if include_rating else None
         ok, message = add_to_shelf(user_id, item, value)
         if ok:
@@ -845,101 +1013,386 @@ def _render_add_form(user_id: str, df_catalog: pd.DataFrame) -> None:
             st.warning(message)
 
 
-def _render_shelf_summary(df_shelf_enriched: pd.DataFrame) -> None:
-    ratings = pd.to_numeric(df_shelf_enriched.get("user_rating"), errors="coerce")
-    rated_count = int(ratings.notna().sum())
-    avg_rating = f"{ratings.dropna().mean():.2f}" if ratings.notna().any() else "N/A"
+def _coerce_user_rating(value: Any) -> tuple[int | None, str | None]:
+    if value is None or pd.isna(value):
+        return None, None
 
-    st.subheader("Shelf summary")
-    st.markdown(
-        '<p class="section-note">Quick overview of your collection and personal ratings.</p>',
-        unsafe_allow_html=True,
+    if isinstance(value, str):
+        text = value.strip()
+        if text == "":
+            return None, None
+        raw = text
+    else:
+        raw = value
+
+    try:
+        parsed = float(raw)
+    except (TypeError, ValueError):
+        return None, "Rating must be an integer between 1 and 10."
+
+    if not np.isfinite(parsed):
+        return None, "Rating must be an integer between 1 and 10."
+
+    rounded = round(parsed)
+    if abs(parsed - rounded) > 1e-9:
+        return None, "Rating must be an integer between 1 and 10."
+
+    rating = int(rounded)
+    if rating < 1 or rating > 10:
+        return None, "Rating must be an integer between 1 and 10."
+    return rating, None
+
+
+def _sort_shelf_view(df_view: pd.DataFrame, sort_mode: str) -> pd.DataFrame:
+    if df_view.empty:
+        return df_view
+
+    if sort_mode == "Your rating (high -> low)":
+        return df_view.sort_values(
+            by=["Your rating", "Brand", "Fragrance"],
+            ascending=[False, True, True],
+            na_position="last",
+            kind="mergesort",
+        )
+
+    if sort_mode == "Fragrantica rating (high -> low)":
+        return df_view.sort_values(
+            by=["Fragrantica rating", "Brand", "Fragrance"],
+            ascending=[False, True, True],
+            na_position="last",
+            kind="mergesort",
+        )
+
+    if sort_mode == "Name (A -> Z)":
+        return df_view.sort_values(
+            by=["Fragrance", "Brand"],
+            ascending=[True, True],
+            na_position="last",
+            kind="mergesort",
+        )
+
+    return df_view.sort_values(
+        by=["Group", "Category", "Brand", "Fragrance"],
+        ascending=[True, True, True, True],
+        na_position="last",
+        kind="mergesort",
     )
-    mcol1, mcol2, mcol3 = st.columns(3)
-    with mcol1:
-        st.metric("Fragrances on shelf", f"{len(df_shelf_enriched)}")
-    with mcol2:
-        st.metric("Rated fragrances", f"{rated_count}")
-    with mcol3:
-        st.metric("Average personal rating", avg_rating)
 
 
 def _render_shelf_list(df_shelf_enriched: pd.DataFrame) -> None:
     st.subheader("Your shelf")
     st.markdown(
-        '<p class="section-note">Review saved items, adjust ratings, or remove fragrances.</p>',
+        '<p class="section-note">Review, sort, and update your full shelf in one compact list.</p>',
         unsafe_allow_html=True,
     )
+
+    feedback = st.session_state.pop("shelf_save_feedback", None)
+    if feedback:
+        st.success(feedback)
+
+    feedback_errors = st.session_state.pop("shelf_save_errors", None)
+    if feedback_errors:
+        details = "\n- ".join(str(msg) for msg in feedback_errors)
+        st.error(f"Some changes could not be saved:\n- {details}")
 
     if df_shelf_enriched.empty:
         st.info("Your shelf is empty. Add your first fragrance above.")
         return
 
-    for _, row in df_shelf_enriched.iterrows():
-        row_id = str(row.get("id", ""))
-        brand = _normalize_text(row.get("brand"))
-        name = _normalize_text(row.get("name"))
-        category = _normalize_text(row.get("fragrance_category"))
-        sex = _format_sex_label(row.get("sex"))
-        rating_raw = row.get("user_rating")
-        default_rating = "No rating" if pd.isna(rating_raw) else str(int(float(rating_raw)))
+    shelf_df = df_shelf_enriched.copy()
+    for col in ("id", "brand", "name", "fragrance_category", "sex", "user_rating", "rating", "votes"):
+        if col not in shelf_df.columns:
+            shelf_df[col] = pd.NA
 
-        with st.container(border=True):
-            st.markdown(f"**{brand} — {name}**")
+    shelf_df["__row_id"] = shelf_df["id"].apply(_normalize_text)
+    invalid_ids = int((shelf_df["__row_id"] == "").sum())
+    if invalid_ids:
+        st.warning(f"{invalid_ids} shelf item(s) are missing IDs and cannot be edited.")
+        shelf_df = shelf_df[shelf_df["__row_id"] != ""].copy()
+        if shelf_df.empty:
+            return
 
-            chips: list[str] = []
-            if category:
-                chips.append(f"Category: {category}")
-                chips.append(f"Family: {compute_family(category)}")
-            if sex:
-                chips.append(f"Audience: {sex}")
-            if chips:
-                chips_html = "".join(
-                    f'<span class="meta-chip">{escape(text)}</span>' for text in chips
-                )
-                st.markdown(
-                    f'<div class="meta-row">{chips_html}</div>',
-                    unsafe_allow_html=True,
-                )
+    shelf_df["Brand"] = shelf_df["brand"].fillna("").astype(str).str.strip().replace("", "-")
+    shelf_df["Fragrance"] = shelf_df["name"].fillna("").astype(str).str.strip().replace("", "-")
+    shelf_df["Category"] = shelf_df["fragrance_category"].fillna("").astype(str).str.strip().replace("", "-")
+    shelf_df["Group"] = shelf_df["fragrance_category"].apply(compute_family)
+    shelf_df["Audience"] = shelf_df["sex"].apply(_format_sex_label).replace("", "-")
 
-            action_col1, action_col2, action_col3 = st.columns([2.6, 1.2, 1.2])
-            with action_col1:
-                rating_options = ["No rating"] + [str(i) for i in range(1, 11)]
-                try:
-                    default_idx = rating_options.index(default_rating)
-                except ValueError:
-                    default_idx = 0
-                selected_rating = st.selectbox(
-                    "Your rating",
-                    options=rating_options,
-                    index=default_idx,
-                    key=f"rating_select_{row_id}",
-                )
-            with action_col2:
-                if st.button(
-                    "Save",
-                    key=f"save_rating_{row_id}",
-                    use_container_width=True,
-                    type="primary",
-                ):
-                    new_rating = None if selected_rating == "No rating" else int(selected_rating)
-                    ok, message = update_shelf_rating(row_id, new_rating)
-                    if ok:
-                        st.success(message)
-                        st.rerun()
-                    else:
-                        st.error(message)
-            with action_col3:
-                if st.button("Remove", key=f"delete_row_{row_id}", use_container_width=True):
-                    ok, message = delete_shelf_item(row_id)
-                    if ok:
-                        st.success(message)
-                        st.rerun()
-                    else:
-                        st.error(message)
+    your_rating = pd.to_numeric(shelf_df["user_rating"], errors="coerce")
+    shelf_df["Your rating"] = your_rating.where(your_rating.between(1, 10)).round().astype("Int64")
+    shelf_df["Fragrantica rating"] = pd.to_numeric(shelf_df["rating"], errors="coerce").round(3)
+    shelf_df["Votes"] = pd.to_numeric(shelf_df["votes"], errors="coerce").round().astype("Int64")
+
+    ctrl_col1, ctrl_col2 = st.columns([2.8, 1.8])
+    with ctrl_col1:
+        search_query = st.text_input(
+            "Search",
+            key="shelf_table_search",
+            placeholder="Brand, fragrance, category, or group",
+        ).strip()
+    with ctrl_col2:
+        sort_mode = st.selectbox(
+            "Sort by",
+            options=[
+                "Your rating (high -> low)",
+                "Fragrantica rating (high -> low)",
+                "Name (A -> Z)",
+                "Group -> Category (A -> Z)",
+            ],
+            key="shelf_sort_mode",
+        )
+
+    filtered_df = shelf_df.copy()
+    if search_query:
+        q = search_query.lower()
+        search_blob = (
+            filtered_df["Brand"].str.lower()
+            + " "
+            + filtered_df["Fragrance"].str.lower()
+            + " "
+            + filtered_df["Category"].str.lower()
+            + " "
+            + filtered_df["Group"].str.lower()
+        )
+        filtered_df = filtered_df[search_blob.str.contains(q, na=False)].copy()
+
+    filtered_df = _sort_shelf_view(filtered_df, sort_mode)
+    st.caption(f"Showing {len(filtered_df)} of {len(shelf_df)} fragrances")
+
+    if filtered_df.empty:
+        st.info("No shelf items match your search.")
+        return
+
+    original_ratings = {
+        str(row_id): (None if pd.isna(val) else int(val))
+        for row_id, val in zip(filtered_df["__row_id"], filtered_df["Your rating"])
+    }
+
+    editor_df = filtered_df[
+        [
+            "__row_id",
+            "Brand",
+            "Fragrance",
+            "Group",
+            "Category",
+            "Audience",
+            "Your rating",
+            "Fragrantica rating",
+            "Votes",
+        ]
+    ].copy()
+    editor_df["Remove"] = False
+    editor_df = editor_df.set_index("__row_id")
+    editor_df.index.name = "row_id"
+    editor_df["Your rating"] = pd.to_numeric(editor_df["Your rating"], errors="coerce")
+
+    table_height = min(900, max(260, 120 + len(editor_df) * 35))
+    edited_df = st.data_editor(
+        editor_df,
+        use_container_width=True,
+        hide_index=True,
+        height=table_height,
+        key="shelf_table_editor",
+        disabled=[
+            "Brand",
+            "Fragrance",
+            "Group",
+            "Category",
+            "Audience",
+            "Fragrantica rating",
+            "Votes",
+        ],
+        column_config={
+            "Your rating": st.column_config.NumberColumn(
+                "Your rating",
+                min_value=1,
+                max_value=10,
+                step=1,
+                format="%d",
+                required=False,
+                help="Set personal rating from 1 to 10 or leave empty.",
+            ),
+            "Fragrantica rating": st.column_config.NumberColumn(
+                "Fragrantica rating",
+                format="%.3f",
+            ),
+            "Votes": st.column_config.NumberColumn("Votes", format="%d"),
+            "Remove": st.column_config.CheckboxColumn("Remove"),
+        },
+    )
+
+    if st.button("Save changes", type="primary", key="save_shelf_changes"):
+        updated_count = 0
+        removed_count = 0
+        errors: list[str] = []
+
+        for row_id, row in edited_df.iterrows():
+            row_id_s = str(row_id)
+            row_label = f"{row.get('Brand', '-')} — {row.get('Fragrance', '-')}"
+
+            if bool(row.get("Remove", False)):
+                ok, message = delete_shelf_item(row_id_s)
+                if ok:
+                    removed_count += 1
+                else:
+                    errors.append(f"{row_label}: {message}")
+                continue
+
+            new_rating, validation_error = _coerce_user_rating(row.get("Your rating"))
+            if validation_error:
+                errors.append(f"{row_label}: {validation_error}")
+                continue
+
+            old_rating = original_ratings.get(row_id_s)
+            if new_rating == old_rating:
+                continue
+
+            ok, message = update_shelf_rating(row_id_s, new_rating)
+            if ok:
+                updated_count += 1
+            else:
+                errors.append(f"{row_label}: {message}")
+
+        if updated_count == 0 and removed_count == 0 and not errors:
+            st.info("No changes to save.")
+            return
+
+        summary_parts: list[str] = []
+        if updated_count:
+            summary_parts.append(f"Saved {updated_count} rating{'s' if updated_count != 1 else ''}")
+        if removed_count:
+            summary_parts.append(f"Removed {removed_count} fragrance{'s' if removed_count != 1 else ''}")
+
+        if summary_parts:
+            st.session_state["shelf_save_feedback"] = ", ".join(summary_parts)
+        if errors:
+            st.session_state["shelf_save_errors"] = errors[:8]
+        st.rerun()
+
+
+def _lighten_hex(hex_color: str, factor: float = 0.45) -> str:
+    """Blend a hex color toward white by the given factor (0 = no change, 1 = white)."""
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    r = int(r + (255 - r) * factor)
+    g = int(g + (255 - g) * factor)
+    b = int(b + (255 - b) * factor)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _build_sunburst_data(df_shelf_enriched: pd.DataFrame) -> dict[str, Any]:
+    """
+    Build the ids/labels/parents/values/colors/customdata arrays for a
+    two-ring Plotly Sunburst chart.
+
+    Inner ring  — one segment per family in FAMILY_ORDER.
+    Outer ring  — subcategory breakdown; empty families get a phantom grey
+                  child so their inner-ring sector stays visible.
+    """
+    _EMPTY_COLOR = "#e8ecef"
+    _EMPTY_CHILD_COLOR = "#f1f4f6"
+
+    # ── Accumulate subcategory counts ─────────────────────────────────────────
+    family_to_subcats: dict[str, dict[str, int]] = {f: {} for f in FAMILY_ORDER}
+
+    if not df_shelf_enriched.empty and "fragrance_category" in df_shelf_enriched.columns:
+        for cat_raw in df_shelf_enriched["fragrance_category"].fillna(""):
+            cat = str(cat_raw).strip()
+            family = compute_family(cat)
+            cat_lower = cat.lower()
+
+            subcat_found: str | None = None
+            if family in SUBCATEGORY_MAP:
+                for subcat_name, keywords in SUBCATEGORY_MAP[family].items():
+                    if keywords and any(kw in cat_lower for kw in keywords):
+                        subcat_found = subcat_name
+                        break
+
+            if subcat_found is None:
+                subcat_found = "Uncategorized" if family == "Other" else f"Other {family}"
+
+            subcat_dict = family_to_subcats[family]
+            subcat_dict[subcat_found] = subcat_dict.get(subcat_found, 0) + 1
+
+    total_items: int = sum(sum(sc.values()) for sc in family_to_subcats.values())
+
+    # Phantom value given to zero-count families so their inner-ring slice
+    # stays visible (≈ 12% of the average slot size, min 0.3).
+    phantom = max(0.3, total_items / len(FAMILY_ORDER) * 0.12) if total_items > 0 else 1.0
+
+    # ── Build Plotly arrays ───────────────────────────────────────────────────
+    ids: list[str] = []
+    labels: list[str] = []
+    parents: list[str] = []
+    values: list[float] = []
+    colors: list[str] = []
+    customdata: list[dict[str, Any]] = []
+
+    for family in FAMILY_ORDER:
+        subcat_counts = family_to_subcats[family]
+        family_count = sum(subcat_counts.values())
+        fam_color = FAMILY_COLORS.get(family, "#94a3b8")
+        fam_id = f"fam::{family}"
+
+        if family_count == 0:
+            # Inner ring: phantom grey segment
+            ids.append(fam_id)
+            labels.append(family)
+            parents.append("")
+            values.append(phantom)
+            colors.append(_EMPTY_COLOR)
+            customdata.append({"family": family, "count": 0, "total": total_items, "is_empty": True})
+
+            # Outer ring: single placeholder child
+            ids.append(f"{fam_id}::__empty__")
+            labels.append("No fragrances")
+            parents.append(fam_id)
+            values.append(phantom)
+            colors.append(_EMPTY_CHILD_COLOR)
+            customdata.append({"family": family, "count": 0, "total": total_items, "is_empty": True})
+        else:
+            # Inner ring: real segment sized by count
+            ids.append(fam_id)
+            labels.append(family)
+            parents.append("")
+            values.append(float(family_count))
+            colors.append(fam_color)
+            customdata.append({"family": family, "count": family_count, "total": total_items, "is_empty": False})
+
+            # Outer ring: one segment per subcategory (only non-zero)
+            subcat_color = _lighten_hex(fam_color, 0.42)
+            for subcat_name, subcat_count in subcat_counts.items():
+                ids.append(f"{fam_id}::{subcat_name}")
+                labels.append(subcat_name)
+                parents.append(fam_id)
+                values.append(float(subcat_count))
+                colors.append(subcat_color)
+                customdata.append({
+                    "family": family,
+                    "subcat": subcat_name,
+                    "count": subcat_count,
+                    "total": total_items,
+                    "is_empty": False,
+                })
+
+    return {
+        "ids": ids,
+        "labels": labels,
+        "parents": parents,
+        "values": values,
+        "colors": colors,
+        "customdata": customdata,
+        "total_items": total_items,
+    }
 
 
 def _render_coverage(df_shelf_enriched: pd.DataFrame) -> None:
+    try:
+        import plotly.graph_objects as go
+    except ImportError:
+        st.warning("Install plotly (`pip install plotly`) to view the fragrance wheel.")
+        return
+
     st.subheader("Fragrance wheel coverage")
     st.markdown(
         '<p class="section-note">See how broadly your shelf covers fragrance families.</p>',
@@ -954,8 +1407,93 @@ def _render_coverage(df_shelf_enriched: pd.DataFrame) -> None:
         f"{stats['covered_families']} / {stats['total_families']}",
     )
 
-    chart_df = stats["family_counts"].set_index("family")
-    st.bar_chart(chart_df["count"])
+    data = _build_sunburst_data(df_shelf_enriched)
+    total = data["total_items"]
+
+    # Build per-node hover text
+    hover_texts: list[str] = []
+    for cd in data["customdata"]:
+        if cd.get("is_empty"):
+            hover_texts.append(f"<b>{cd['family']}</b><br>Not on your shelf")
+        elif "subcat" in cd:
+            pct = 100.0 * cd["count"] / cd["total"] if cd["total"] else 0.0
+            hover_texts.append(
+                f"<b>{cd['family']}</b> › {cd['subcat']}"
+                f"<br>{cd['count']} fragrance{'s' if cd['count'] != 1 else ''} · {pct:.1f}%"
+            )
+        else:
+            pct = 100.0 * cd["count"] / cd["total"] if cd["total"] else 0.0
+            hover_texts.append(
+                f"<b>{cd['family']}</b>"
+                f"<br>{cd['count']} fragrance{'s' if cd['count'] != 1 else ''} · {pct:.1f}%"
+            )
+
+    fig = go.Figure(
+        go.Sunburst(
+            ids=data["ids"],
+            labels=data["labels"],
+            parents=data["parents"],
+            values=data["values"],
+            branchvalues="total",
+            marker=dict(
+                colors=data["colors"],
+                line=dict(color="#ffffff", width=1.5),
+            ),
+            hovertext=hover_texts,
+            hoverinfo="text",
+            textfont=dict(size=12, family="sans-serif"),
+            insidetextorientation="radial",
+            maxdepth=2,
+            hoverlabel=dict(
+                bgcolor="#1e293b",
+                bordercolor="#1e293b",
+                font=dict(color="#f8fafc", size=13),
+            ),
+        )
+    )
+
+    annotations: list[dict[str, Any]] = []
+    if total == 0:
+        annotations.append(dict(
+            text="Add fragrances<br>to see your coverage",
+            x=0.5, y=0.5,
+            xref="paper", yref="paper",
+            showarrow=False,
+            font=dict(size=14, color="#64748b"),
+        ))
+
+    fig.update_layout(
+        height=480,
+        margin=dict(t=10, b=10, l=10, r=10),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        annotations=annotations,
+        showlegend=False,
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption("Hover segments to explore subcategories. Empty (grey) segments indicate uncovered families.")
+
+    # Inline legend — only covered families
+    counts_lookup: dict[str, int] = dict(
+        zip(stats["family_counts"]["family"], stats["family_counts"]["count"])
+    )
+    covered = [f for f in FAMILY_ORDER if counts_lookup.get(f, 0) > 0]
+    if covered:
+        swatches = "".join(
+            f'<span style="display:inline-flex;align-items:center;gap:5px;'
+            f'margin:0 12px 6px 0;">'
+            f'<span style="display:inline-block;width:11px;height:11px;border-radius:50%;'
+            f'background:{FAMILY_COLORS[f]};flex-shrink:0;"></span>'
+            f'<span style="font-size:0.82rem;color:#334155;">'
+            f'{f} <span style="color:#94a3b8;">({counts_lookup[f]})</span>'
+            f'</span></span>'
+            for f in covered
+        )
+        st.markdown(
+            f'<div style="display:flex;flex-wrap:wrap;padding:2px 0 8px;">{swatches}</div>',
+            unsafe_allow_html=True,
+        )
 
 
 def _log_recommendations(user_id: str, df_recs: pd.DataFrame) -> None:
@@ -1064,11 +1602,12 @@ def main() -> None:
         return
 
     user_id = auth_block()
-    st.divider()
 
     if not user_id:
         st.info("Sign in to save your shelf and get personalized recommendations.")
         return
+
+    st.divider()
 
     try:
         df_shelf = fetch_user_shelf(user_id)
@@ -1085,8 +1624,6 @@ def main() -> None:
         st.error(f"Could not join shelf data with catalog: {exc}")
         df_shelf_enriched = df_shelf.copy()
 
-    _render_shelf_summary(df_shelf_enriched)
-    st.divider()
     _render_shelf_list(df_shelf_enriched)
     st.divider()
     _render_coverage(df_shelf_enriched)

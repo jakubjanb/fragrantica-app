@@ -7,6 +7,7 @@ Visualize fragrance families and categories using a two-level sunburst chart.
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from src.sunburst_component import render_sunburst_click
+from src.tables import render_top_fragrances_table
 
 MASTER_CSV = Path(__file__).resolve().parent.parent / "Data" / "all_brands_clean.csv"
 
@@ -262,7 +264,7 @@ def _build_family_scatter(df_plot: pd.DataFrame, family: str, selected_subcatego
         color_continuous_scale=_family_colorscale(family),
         labels={"rating": "Rating", "votes_plot": "Votes"},
         title=f"{title_label} — Rating vs Votes",
-        custom_data=["votes", "fragrance_category", "brand", "sex"],
+        custom_data=["votes", "fragrance_category", "brand", "sex", "url"],
     )
 
     fig.update_traces(
@@ -508,6 +510,7 @@ def _render_subcategory_section(family_df: pd.DataFrame, selected_family: str) -
         fig_html = family_fig.to_html(
             include_plotlyjs="cdn",
             full_html=False,
+            div_id="family-fragrance-plot",
             config={
                 "responsive": True,
                 "displayModeBar": True,
@@ -515,7 +518,88 @@ def _render_subcategory_section(family_df: pd.DataFrame, selected_family: str) -
                 "modeBarButtonsToRemove": ["pan2d", "lasso2d", "select2d"],
             },
         )
-        components.html(fig_html, height=950, scrolling=False)
+        click_js = """
+<script>
+(function attachClick(){
+  var gd = document.getElementById('family-fragrance-plot');
+  if (!gd || typeof gd.on !== 'function') { requestAnimationFrame(attachClick); return; }
+  gd.on('plotly_click', function(data){
+    try {
+      var pt = data && data.points && data.points[0];
+      if (!pt) return;
+      var cd = pt.customdata;
+      var url = Array.isArray(cd) ? cd[4] : undefined;
+      if (url && typeof url === 'string' && /^https?:\\/\\//.test(url)) {
+        window.open(url, '_blank', 'noopener');
+      }
+    } catch (e) {}
+  });
+})();
+</script>
+"""
+        components.html(fig_html + click_js, height=950, scrolling=False)
+
+    # --- Top 10 fragrances section ---
+    if _is_family_option(active_subcategory):
+        top10_heading = f"Top 10 of all {_family_from_option(active_subcategory).lower()} fragrances"
+    else:
+        top10_heading = f"Top 10 {active_subcategory.lower()} fragrances"
+    st.markdown(f"### {top10_heading}")
+    rank_mode = st.radio(
+        "Ranking mode",
+        options=["Reliable top-rated", "Raw rating"],
+        index=0,
+        horizontal=True,
+        key="fc_top10_mode",
+        help="Reliable mode ranks with a confidence-aware score. Raw mode ranks by rating only.",
+    )
+
+    min_votes_threshold = int(math.ceil(vote_threshold)) if total_frags > 0 else 0
+    percentile_label = int(vote_quantile * 100)
+    st.caption(
+        f"Top-rated (min {min_votes_threshold:,} votes; {percentile_label}th percentile threshold for current category filters)"
+    )
+
+    table_pool = df_family_plot[df_family_plot["votes"] >= min_votes_threshold].copy()
+    if table_pool.empty:
+        st.info("No fragrances meet the current minimum-votes threshold.")
+    else:
+        prior_rating = float(df_family_plot["rating"].mean()) if not df_family_plot.empty else 0.0
+        m = float(min_votes_threshold)
+        if m > 0:
+            v = table_pool["votes"].astype(float)
+            r = table_pool["rating"].astype(float)
+            table_pool["reliable_score"] = (v / (v + m)) * r + (m / (v + m)) * prior_rating
+        else:
+            table_pool["reliable_score"] = table_pool["rating"].astype(float)
+
+        if rank_mode == "Reliable top-rated":
+            table_pool = table_pool.sort_values(
+                ["reliable_score", "rating", "votes"],
+                ascending=[False, False, False],
+            )
+        else:
+            table_pool = table_pool.sort_values(
+                ["rating", "votes"],
+                ascending=[False, False],
+            )
+
+        top10_df = table_pool.head(10).copy().reset_index(drop=True)
+        top10_df["Rank"] = top10_df.index + 1
+        top10_df["Sex"] = top10_df["sex"].fillna("-").astype(str).str.capitalize()
+        top10_df["Brand"] = top10_df["brand"].fillna("-").astype(str)
+
+        display_top10 = top10_df[
+            ["Rank", "name", "rating", "votes", "Sex", "Brand", "url"]
+        ].rename(
+            columns={
+                "name": "Fragrance",
+                "rating": "Rating",
+                "votes": "Votes",
+                "url": "Link",
+            }
+        )
+        render_top_fragrances_table(display_top10)
 
 
 FAMILY_OPTION_SUFFIX = " Family (All)"
