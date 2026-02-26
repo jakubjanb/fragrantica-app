@@ -257,6 +257,8 @@ def _inject_page_styles() -> None:
             border-radius: 14px;
             background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
             padding: 0.65rem 0.8rem;
+            display: inline-block;
+            width: fit-content;
         }
 
         .account-dock-label {
@@ -275,12 +277,6 @@ def _inject_page_styles() -> None:
             font-weight: 600;
             line-height: 1.3;
             white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .account-dock-spacer {
-            height: 0.45rem;
         }
 
         @media (max-width: 980px) {
@@ -448,18 +444,20 @@ def auth_block(compact_logged_in: bool = False) -> str | None:
     if current_user_id and compact_logged_in:
         label = _normalize_text(current_email) or str(current_user_id)
         safe_label = html.escape(label)
-        st.markdown(
-            f"""
-            <div class="account-dock">
-                <p class="account-dock-label">Account</p>
-                <p class="account-dock-email" title="{safe_label}">{safe_label}</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.markdown('<div class="account-dock-spacer"></div>', unsafe_allow_html=True)
-        if st.button("Sign out", key="shelf_sign_out_compact"):
-            _sign_out_user()
+        btn_col, dock_col = st.columns([1, 2.5], vertical_alignment="center")
+        with btn_col:
+            if st.button("Sign out", key="shelf_sign_out_compact"):
+                _sign_out_user()
+        with dock_col:
+            st.markdown(
+                f"""
+                <div class="account-dock">
+                    <p class="account-dock-label">Account</p>
+                    <p class="account-dock-email" title="{safe_label}">{safe_label}</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
         return str(current_user_id)
 
     st.subheader("Account")
@@ -1650,7 +1648,7 @@ def main() -> None:
     )
 
     if st.session_state.get("auth_user_id"):
-        intro_col, account_col = st.columns([5.4, 1.8], gap="large")
+        intro_col, account_col = st.columns([4.2, 3.0], gap="large")
         with intro_col:
             st.markdown(subtitle_html, unsafe_allow_html=True)
         with account_col:
