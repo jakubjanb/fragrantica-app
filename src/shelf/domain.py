@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from src.shelf.constants import FAMILY_COLORS, FAMILY_KEYWORDS, FAMILY_ORDER
+from src.shelf.constants import FAMILY_COLORS, FAMILY_KEYWORDS, FAMILY_ORDER, TOTAL_WHEEL_CATEGORIES
 from src.shelf.utils import _item_key, _lower_or_empty, _normalize_sex
 
 
@@ -190,18 +190,28 @@ def recommend(
 
 
 def coverage_stats(df_shelf_with_catalog: pd.DataFrame) -> dict[str, Any]:
+    total_categories = TOTAL_WHEEL_CATEGORIES
+
     if df_shelf_with_catalog.empty:
         empty_counts = pd.DataFrame({"family": FAMILY_ORDER, "count": [0] * len(FAMILY_ORDER)})
         return {
             "coverage_pct": 0.0,
             "covered_families": 0,
             "total_families": len(FAMILY_ORDER),
+            "category_coverage_pct": 0.0,
+            "covered_categories": 0,
+            "total_categories": total_categories,
             "family_counts": empty_counts,
         }
 
     categories = df_shelf_with_catalog.get("fragrance_category", pd.Series([], dtype=str)).fillna("")
-    families = categories.apply(compute_family)
+    normalized_categories = categories.apply(_normalize_category_label)
+    families = normalized_categories.apply(compute_family)
     family_counts = families.value_counts().to_dict()
+
+    covered_categories = int(normalized_categories[normalized_categories != ""].nunique())
+    covered_categories_capped = min(covered_categories, total_categories)
+    category_coverage_pct = 100.0 * covered_categories_capped / total_categories if total_categories else 0.0
 
     counts_df = pd.DataFrame(
         {
@@ -218,6 +228,9 @@ def coverage_stats(df_shelf_with_catalog: pd.DataFrame) -> dict[str, Any]:
         "coverage_pct": coverage_pct,
         "covered_families": covered,
         "total_families": total,
+        "category_coverage_pct": category_coverage_pct,
+        "covered_categories": covered_categories_capped,
+        "total_categories": total_categories,
         "family_counts": counts_df,
     }
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 ENABLE_RECOMMENDATION_LOG = False
+TOTAL_WHEEL_CATEGORIES = 33
 
 FAMILY_ORDER = [
     "Floral",

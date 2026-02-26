@@ -20,17 +20,27 @@ def _render_coverage(df_shelf_enriched: pd.DataFrame) -> None:
 
     st.subheader("Fragrance wheel coverage")
     st.markdown(
-        '<p class="section-note">See how broadly your shelf covers fragrance families.</p>',
+        '<p class="section-note">See how broadly your shelf covers fragrance families and categories.</p>',
         unsafe_allow_html=True,
     )
     stats = coverage_stats(df_shelf_enriched)
 
-    metric_col1, metric_col2 = st.columns(2)
-    metric_col1.metric("Coverage", f"{stats['coverage_pct']:.1f}%")
-    metric_col2.metric(
-        "Covered families",
-        f"{stats['covered_families']} / {stats['total_families']}",
+    metric_cards = [
+        ("Coverage", f"{stats['coverage_pct']:.1f}%"),
+        ("Covered families", f"{stats['covered_families']} / {stats['total_families']}"),
+        ("Category coverage", f"{stats['category_coverage_pct']:.1f}%"),
+        ("Covered categories", f"{stats['covered_categories']} / {stats['total_categories']}"),
+    ]
+    cards_html = "".join(
+        (
+            '<div class="coverage-stat-card">'
+            f'<p class="coverage-stat-label">{label}</p>'
+            f'<p class="coverage-stat-value">{value}</p>'
+            "</div>"
+        )
+        for label, value in metric_cards
     )
+    st.markdown(f'<div class="coverage-stat-row">{cards_html}</div>', unsafe_allow_html=True)
 
     data = _build_sunburst_data(df_shelf_enriched)
     total = data["total_items"]

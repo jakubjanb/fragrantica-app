@@ -41,6 +41,40 @@ def _inject_page_styles() -> None:
             margin-bottom: 0.6rem;
         }
 
+        .coverage-stat-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            margin-bottom: 0.6rem;
+        }
+
+        .coverage-stat-card {
+            flex: 1 1 240px;
+            min-width: 210px;
+            background: var(--surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: 14px;
+            padding: 0.65rem 0.9rem 0.7rem;
+            min-height: 104px;
+        }
+
+        .coverage-stat-label {
+            margin: 0;
+            color: var(--text-muted);
+            font-size: 0.88rem;
+            font-weight: 500;
+            line-height: 1.25;
+        }
+
+        .coverage-stat-value {
+            margin: 0.3rem 0 0;
+            color: var(--text-strong);
+            font-size: 2.5rem;
+            font-weight: 600;
+            line-height: 1.08;
+            letter-spacing: -0.02em;
+        }
+
         div[data-baseweb="popover"] ul,
         ul[data-baseweb="menu"],
         div[role="listbox"] ul {
@@ -150,6 +184,18 @@ def _inject_page_styles() -> None:
             .main .block-container {
                 padding-left: 1rem;
                 padding-right: 1rem;
+            }
+
+            .coverage-stat-card {
+                flex: 1 1 calc(50% - 0.75rem);
+                min-width: 190px;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .coverage-stat-card {
+                flex: 1 1 100%;
+                min-width: 0;
             }
         }
         </style>
