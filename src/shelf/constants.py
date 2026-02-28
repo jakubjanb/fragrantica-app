@@ -19,6 +19,9 @@ FAMILY_ORDER = [
     "Other",
 ]
 
+WHEEL_EXCLUDED_FAMILIES = {"Fruity", "Gourmand", "Fresh"}
+WHEEL_FAMILY_ORDER = [family for family in FAMILY_ORDER if family not in WHEEL_EXCLUDED_FAMILIES]
+
 FAMILY_KEYWORDS: dict[str, list[str]] = {
     "Floral": ["floral", "flower", "rose", "white floral", "iris", "violet", "jasmine"],
     "Woody": ["woody", "wood", "sandalwood", "cedar", "oud", "vetiver", "patchouli"],

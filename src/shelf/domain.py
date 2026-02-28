@@ -7,7 +7,14 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from src.shelf.constants import FAMILY_COLORS, FAMILY_KEYWORDS, FAMILY_ORDER, TOTAL_WHEEL_CATEGORIES
+from src.shelf.constants import (
+    FAMILY_COLORS,
+    FAMILY_KEYWORDS,
+    FAMILY_ORDER,
+    TOTAL_WHEEL_CATEGORIES,
+    WHEEL_EXCLUDED_FAMILIES,
+    WHEEL_FAMILY_ORDER,
+)
 from src.shelf.utils import _item_key, _lower_or_empty, _normalize_sex
 
 
@@ -25,6 +32,31 @@ def compute_family(category: Any) -> str:
             return family
 
     return "Other"
+
+
+def _map_family_for_wheel(category: Any) -> str:
+    family = compute_family(category)
+    if family in WHEEL_EXCLUDED_FAMILIES:
+        return "Other"
+    if family not in WHEEL_FAMILY_ORDER:
+        return "Other"
+    return family
+
+
+def _wheel_family_order_for_dataset(df_shelf_with_catalog: pd.DataFrame) -> list[str]:
+    """Return wheel families, including 'Other' only when mapped data requires it."""
+    families = [family for family in WHEEL_FAMILY_ORDER if family != "Other"]
+    if df_shelf_with_catalog.empty or "fragrance_category" not in df_shelf_with_catalog.columns:
+        return families
+
+    categories = df_shelf_with_catalog["fragrance_category"].fillna("")
+    has_other = any(
+        _map_family_for_wheel(_normalize_category_label(cat_raw)) == "Other"
+        for cat_raw in categories
+    )
+    if has_other:
+        families.append("Other")
+    return families
 
 
 def _enrich_shelf_with_catalog(df_shelf: pd.DataFrame, df_catalog: pd.DataFrame) -> pd.DataFrame:
@@ -191,13 +223,14 @@ def recommend(
 
 def coverage_stats(df_shelf_with_catalog: pd.DataFrame) -> dict[str, Any]:
     total_categories = TOTAL_WHEEL_CATEGORIES
+    wheel_families = _wheel_family_order_for_dataset(df_shelf_with_catalog)
 
     if df_shelf_with_catalog.empty:
-        empty_counts = pd.DataFrame({"family": FAMILY_ORDER, "count": [0] * len(FAMILY_ORDER)})
+        empty_counts = pd.DataFrame({"family": wheel_families, "count": [0] * len(wheel_families)})
         return {
             "coverage_pct": 0.0,
             "covered_families": 0,
-            "total_families": len(FAMILY_ORDER),
+            "total_families": len(wheel_families),
             "category_coverage_pct": 0.0,
             "covered_categories": 0,
             "total_categories": total_categories,
@@ -206,7 +239,7 @@ def coverage_stats(df_shelf_with_catalog: pd.DataFrame) -> dict[str, Any]:
 
     categories = df_shelf_with_catalog.get("fragrance_category", pd.Series([], dtype=str)).fillna("")
     normalized_categories = categories.apply(_normalize_category_label)
-    families = normalized_categories.apply(compute_family)
+    families = normalized_categories.apply(_map_family_for_wheel)
     family_counts = families.value_counts().to_dict()
 
     covered_categories = int(normalized_categories[normalized_categories != ""].nunique())
@@ -215,13 +248,13 @@ def coverage_stats(df_shelf_with_catalog: pd.DataFrame) -> dict[str, Any]:
 
     counts_df = pd.DataFrame(
         {
-            "family": FAMILY_ORDER,
-            "count": [int(family_counts.get(f, 0)) for f in FAMILY_ORDER],
+            "family": wheel_families,
+            "count": [int(family_counts.get(f, 0)) for f in wheel_families],
         }
     )
 
     covered = int((counts_df["count"] > 0).sum())
-    total = len(FAMILY_ORDER)
+    total = len(wheel_families)
     coverage_pct = 100.0 * covered / total if total else 0.0
 
     return {
@@ -258,20 +291,23 @@ def _build_sunburst_data(df_shelf_enriched: pd.DataFrame) -> dict[str, Any]:
     Build the ids/labels/parents/values/colors/customdata arrays for a
     two-ring Plotly Sunburst chart.
 
-    Inner ring  - one segment per family in FAMILY_ORDER.
+    Inner ring  - one segment per family (with 'Other' shown only when present).
     Outer ring  - category breakdown; empty families get a phantom grey
                   child so their inner-ring sector stays visible.
     """
     _EMPTY_COLOR = "#e8ecef"
     _EMPTY_CHILD_COLOR = "#f1f4f6"
+    wheel_families = _wheel_family_order_for_dataset(df_shelf_enriched)
 
     # Accumulate category counts per family.
-    family_to_subcats: dict[str, dict[str, int]] = {f: {} for f in FAMILY_ORDER}
+    family_to_subcats: dict[str, dict[str, int]] = {f: {} for f in wheel_families}
 
     if not df_shelf_enriched.empty and "fragrance_category" in df_shelf_enriched.columns:
         for cat_raw in df_shelf_enriched["fragrance_category"].fillna(""):
             cat = _normalize_category_label(cat_raw)
-            family = compute_family(cat)
+            family = _map_family_for_wheel(cat)
+            if family not in family_to_subcats:
+                continue
             subcat_found = cat if cat else "Uncategorized"
 
             subcat_dict = family_to_subcats[family]
@@ -280,7 +316,7 @@ def _build_sunburst_data(df_shelf_enriched: pd.DataFrame) -> dict[str, Any]:
     total_items: int = sum(sum(sc.values()) for sc in family_to_subcats.values())
 
     # Phantom value for zero-count families so inner slices remain visible.
-    phantom = max(0.3, total_items / len(FAMILY_ORDER) * 0.12) if total_items > 0 else 1.0
+    phantom = max(0.3, total_items / len(wheel_families) * 0.12) if total_items > 0 else 1.0
 
     # Build Plotly arrays.
     ids: list[str] = []
@@ -290,7 +326,7 @@ def _build_sunburst_data(df_shelf_enriched: pd.DataFrame) -> dict[str, Any]:
     colors: list[str] = []
     customdata: list[dict[str, Any]] = []
 
-    for family in FAMILY_ORDER:
+    for family in wheel_families:
         subcat_counts = family_to_subcats[family]
         family_count = sum(subcat_counts.values())
         fam_color = FAMILY_COLORS.get(family, "#94a3b8")

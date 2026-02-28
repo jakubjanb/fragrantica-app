@@ -256,6 +256,7 @@ def main() -> None:
     with st.sidebar:
         st.markdown("### 💡 Tip")
         st.markdown("Click on any data point to open the perfume's Fragrantica page.")
+        st.markdown("Click and hold to activate zoom in mode on the plot.")
 
     # --- Sex filter state (initialise once; persists across reruns) ---
     for _k, _v in [("sex_women", True), ("sex_unisex", True), ("sex_men", True)]:
