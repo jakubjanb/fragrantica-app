@@ -17,7 +17,7 @@ def compute_family(category: Any) -> str:
         return "Other"
 
     for family in FAMILY_ORDER:
-        if family.lower() != "other" and family.lower() in text:
+        if family.lower() != "other" and text.startswith(family.lower()):
             return family
 
     for family, keywords in FAMILY_KEYWORDS.items():

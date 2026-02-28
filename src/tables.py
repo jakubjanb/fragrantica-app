@@ -60,7 +60,7 @@ def render_top_fragrances_table(display_df) -> None:
         return
 
     bar_cols = {
-        "Rating": "{:.3f}",
+        "Rating": "{:.2f}",
         "Votes": "{:,.0f}",
     }
     col_ranges = {

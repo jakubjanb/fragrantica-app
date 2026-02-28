@@ -46,7 +46,7 @@ def _render_shelf_list(df_shelf_enriched: pd.DataFrame) -> None:
     shelf_df["Brand"] = shelf_df["brand"].fillna("").astype(str).str.strip().replace("", "-")
     shelf_df["Fragrance"] = shelf_df["name"].fillna("").astype(str).str.strip().replace("", "-")
     shelf_df["Category"] = shelf_df["fragrance_category"].fillna("").astype(str).str.strip().replace("", "-")
-    shelf_df["Group"] = shelf_df["fragrance_category"].apply(compute_family)
+    shelf_df["Family"] = shelf_df["fragrance_category"].apply(compute_family)
 
     your_rating = pd.to_numeric(shelf_df["user_rating"], errors="coerce")
     shelf_df["Your rating"] = your_rating.where(your_rating.between(1, 10)).round().astype("Int64")
@@ -54,7 +54,7 @@ def _render_shelf_list(df_shelf_enriched: pd.DataFrame) -> None:
     search_query = st.text_input(
         "Search",
         key="shelf_table_search",
-        placeholder="Brand, fragrance, category, or group",
+        placeholder="Brand, fragrance, category, or family",
     ).strip()
 
     filtered_df = shelf_df.copy()
@@ -67,7 +67,7 @@ def _render_shelf_list(df_shelf_enriched: pd.DataFrame) -> None:
             + " "
             + filtered_df["Category"].str.lower()
             + " "
-            + filtered_df["Group"].str.lower()
+            + filtered_df["Family"].str.lower()
         )
         filtered_df = filtered_df[search_blob.str.contains(q, na=False)].copy()
 
@@ -88,7 +88,7 @@ def _render_shelf_list(df_shelf_enriched: pd.DataFrame) -> None:
             "__row_id",
             "Brand",
             "Fragrance",
-            "Group",
+            "Family",
             "Category",
             "Your rating",
         ]
@@ -107,11 +107,11 @@ def _render_shelf_list(df_shelf_enriched: pd.DataFrame) -> None:
         hide_index=True,
         height=table_height,
         key="shelf_table_editor",
-        column_order=["Brand", "Fragrance", "Group", "Category", "Your rating", "Remove"],
+        column_order=["Brand", "Fragrance", "Family", "Category", "Your rating", "Remove"],
         disabled=[
             "Brand",
             "Fragrance",
-            "Group",
+            "Family",
             "Category",
         ],
         column_config={

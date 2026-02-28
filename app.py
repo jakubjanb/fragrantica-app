@@ -216,7 +216,7 @@ def main() -> None:
                 <div class="lb-icon">{wheel_icon_tag}</div>
                 <div class="lb-title">Fragrance Wheel Explorer</div>
                 <div class="lb-desc">
-                    Find the best and most popular fragrances in each category — Woody, Oriental, Citrus, and more.
+                    Discover the fragrance wheel and explore fragrance families and categories.
                 </div>
                 <div class="lb-arrow">Open Categories →</div>
             </a>

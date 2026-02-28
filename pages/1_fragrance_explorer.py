@@ -16,6 +16,29 @@ from src.plots import make_figure
 from src.tables import render_top_fragrances_table
 
 
+def _build_top10_title(selected_brand: object) -> str:
+    default_title = "Top 10 fragrances"
+    default_brand_tokens = {"all", "all brands"}
+
+    if isinstance(selected_brand, (list, tuple, set)):
+        normalized_brands = [
+            " ".join(str(brand).split())
+            for brand in selected_brand
+            if str(brand).strip()
+        ]
+        filtered_brands = [
+            brand for brand in normalized_brands if brand.lower() not in default_brand_tokens
+        ]
+        if len(filtered_brands) == 1:
+            return f"Top 10 fragrance by {filtered_brands[0]} s"
+        return default_title
+
+    normalized_brand = " ".join(str(selected_brand).split()) if selected_brand else ""
+    if not normalized_brand or normalized_brand.lower() in default_brand_tokens:
+        return default_title
+    return f"Top 10 fragrances by {normalized_brand} "
+
+
 def main() -> None:
     st.set_page_config(
         page_title="Fragrance Explorer",
@@ -450,7 +473,7 @@ def main() -> None:
     # Render full-width so it naturally expands when the sidebar collapses
     components.html(html + click_js, height=950, scrolling=False)
 
-    st.markdown("### Top 10 fragrances")
+    st.markdown(f"### {_build_top10_title(selected_brand)}")
     rank_mode = st.radio(
         "Ranking mode",
         options=["Reliable top-rated", "Raw rating"],

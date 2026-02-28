@@ -34,6 +34,12 @@ FAMILY_COLORS: dict[str, str] = {
 }
 
 FAMILIES = ["Floral", "Oriental", "Woody", "Aromatic", "Chypre", "Citrus", "Leather"]
+SEX_BUCKETS = ("women", "unisex", "men")
+SEX_BUTTON_KEYS: dict[str, str] = {
+    "women": "fc_women_filter",
+    "unisex": "fc_unisex_filter",
+    "men": "fc_men_filter",
+}
 
 
 @st.cache_data(show_spinner=False)
@@ -71,6 +77,161 @@ def _family_colorscale(family: str) -> list[tuple[float, str]]:
     ]
 
 
+def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
+    color = str(hex_color or "").strip().lstrip("#")
+    if len(color) == 3:
+        color = "".join(ch * 2 for ch in color)
+    if len(color) != 6:
+        return (100, 116, 139)
+    try:
+        return int(color[0:2], 16), int(color[2:4], 16), int(color[4:6], 16)
+    except ValueError:
+        return (100, 116, 139)
+
+
+def _sample_colorscale_hex(colorscale: list[tuple[float, str]], value: float) -> str:
+    if not colorscale:
+        return "#64748b"
+
+    point = max(0.0, min(1.0, float(value)))
+    ordered = sorted(colorscale, key=lambda row: float(row[0]))
+
+    if point <= float(ordered[0][0]):
+        return ordered[0][1]
+
+    for idx in range(1, len(ordered)):
+        left_stop, left_hex = float(ordered[idx - 1][0]), str(ordered[idx - 1][1])
+        right_stop, right_hex = float(ordered[idx][0]), str(ordered[idx][1])
+        if point <= right_stop:
+            span = right_stop - left_stop
+            t = 0.0 if span <= 0 else (point - left_stop) / span
+            return _mix_hex(left_hex, right_hex, t)
+
+    return str(ordered[-1][1])
+
+
+def _relative_luminance(hex_color: str) -> float:
+    def _channel(v: int) -> float:
+        c = v / 255.0
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+    r, g, b = _hex_to_rgb(hex_color)
+    return 0.2126 * _channel(r) + 0.7152 * _channel(g) + 0.0722 * _channel(b)
+
+
+def _text_color_for_background(hex_color: str) -> str:
+    return "#0f172a" if _relative_luminance(hex_color) >= 0.35 else "#ffffff"
+
+
+def _normalise_rating(value: float, min_rating: float, max_rating: float) -> float:
+    if max_rating <= min_rating:
+        return 0.5
+    return max(0.0, min(1.0, (value - min_rating) / (max_rating - min_rating)))
+
+
+def _build_sex_button_palette(df_plot: pd.DataFrame, family: str) -> dict[str, dict[str, str]]:
+    fallback_base = "#64748b"
+    palette: dict[str, dict[str, str]] = {}
+    colorscale = _family_colorscale(family)
+
+    rating_series = (
+        pd.to_numeric(df_plot["rating"], errors="coerce")
+        if "rating" in df_plot.columns
+        else pd.Series(dtype="float64")
+    )
+    valid_ratings = rating_series.dropna()
+    min_rating = float(valid_ratings.min()) if not valid_ratings.empty else 0.0
+    max_rating = float(valid_ratings.max()) if not valid_ratings.empty else 5.0
+
+    for bucket in SEX_BUCKETS:
+        if "sex" in df_plot.columns:
+            bucket_ratings = pd.to_numeric(
+                df_plot.loc[df_plot["sex"].eq(bucket), "rating"],
+                errors="coerce",
+            ).dropna()
+        else:
+            bucket_ratings = pd.Series(dtype="float64")
+
+        if bucket_ratings.empty or valid_ratings.empty:
+            active_bg = fallback_base
+        else:
+            representative_rating = float(bucket_ratings.median())
+            normalized = _normalise_rating(representative_rating, min_rating, max_rating)
+            active_bg = _sample_colorscale_hex(colorscale, normalized)
+
+        inactive_bg = _mix_hex(active_bg, "#ffffff", 0.72)
+        active_border = _mix_hex(active_bg, "#111827", 0.08)
+        inactive_border = _mix_hex(inactive_bg, "#111827", 0.15)
+
+        palette[bucket] = {
+            "active_bg": active_bg,
+            "active_hover_bg": _mix_hex(active_bg, "#111827", 0.12),
+            "active_border": active_border,
+            "active_text": _text_color_for_background(active_bg),
+            "inactive_bg": inactive_bg,
+            "inactive_hover_bg": _mix_hex(inactive_bg, "#111827", 0.08),
+            "inactive_border": inactive_border,
+            "inactive_text": _text_color_for_background(inactive_bg),
+            "disabled_bg": "#f1f5f9",
+            "disabled_border": "#cbd5e1",
+            "disabled_text": "#94a3b8",
+        }
+
+    return palette
+
+
+def _render_sex_button_palette_css(button_palette: dict[str, dict[str, str]]) -> None:
+    css_rules: list[str] = []
+
+    for bucket, key in SEX_BUTTON_KEYS.items():
+        style = button_palette.get(bucket)
+        if not style:
+            continue
+
+        key_variants = [key, key.replace("_", "-")]
+        base_selectors = list(dict.fromkeys(f".st-key-{variant} button" for variant in key_variants))
+        base_selector = ", ".join(base_selectors)
+        hover_selector = ", ".join(f"{selector}:hover" for selector in base_selectors)
+        primary_selector = ", ".join(f'{selector}[kind="primary"]' for selector in base_selectors)
+        primary_hover_selector = ", ".join(
+            f'{selector}[kind="primary"]:hover' for selector in base_selectors
+        )
+        disabled_selector = ", ".join(f"{selector}:disabled" for selector in base_selectors)
+        css_rules.append(
+            f"""
+            {base_selector} {{
+                background: {style["inactive_bg"]} !important;
+                border-color: {style["inactive_border"]} !important;
+                color: {style["inactive_text"]} !important;
+            }}
+            {hover_selector} {{
+                background: {style["inactive_hover_bg"]} !important;
+                border-color: {style["inactive_border"]} !important;
+                color: {style["inactive_text"]} !important;
+            }}
+            {primary_selector} {{
+                background: {style["active_bg"]} !important;
+                border-color: {style["active_border"]} !important;
+                color: {style["active_text"]} !important;
+            }}
+            {primary_hover_selector} {{
+                background: {style["active_hover_bg"]} !important;
+                border-color: {style["active_border"]} !important;
+                color: {style["active_text"]} !important;
+            }}
+            {disabled_selector} {{
+                background: {style["disabled_bg"]} !important;
+                border-color: {style["disabled_border"]} !important;
+                color: {style["disabled_text"]} !important;
+                opacity: 1 !important;
+            }}
+            """
+        )
+
+    if css_rules:
+        st.markdown(f"<style>{''.join(css_rules)}</style>", unsafe_allow_html=True)
+
+
 def _lighten_hex_color(hex_color: str, offset: int = 45) -> str:
     base = hex_color.lstrip("#")
     r, g, b = int(base[0:2], 16), int(base[2:4], 16), int(base[4:6], 16)
@@ -90,6 +251,70 @@ def _build_category_counts(df_raw: pd.DataFrame) -> pd.DataFrame:
     cat_counts.columns = ["category", "count"]
     cat_counts["family"] = cat_counts["category"].apply(_get_family)
     return cat_counts
+
+
+def _normalise_sex_bucket(value: Any) -> str:
+    label = " ".join(str(value or "").strip().lower().split())
+    if not label:
+        return ""
+
+    women_tokens = {"women", "woman", "female", "for women", "feminine", "ladies", "lady"}
+    unisex_tokens = {"unisex", "uni sex", "uni-sex"}
+    men_tokens = {"men", "man", "male", "for men", "masculine", "gentlemen", "gentleman"}
+
+    if label in women_tokens:
+        return "women"
+    if label in unisex_tokens:
+        return "unisex"
+    if label in men_tokens:
+        return "men"
+    return ""
+
+
+def _build_sex_counts(df: pd.DataFrame) -> dict[str, int]:
+    if df.empty or "sex" not in df.columns:
+        return {bucket: 0 for bucket in SEX_BUCKETS}
+    sex_series = df["sex"].fillna("").astype(str).str.strip().str.lower()
+    return {bucket: int(sex_series.eq(bucket).sum()) for bucket in SEX_BUCKETS}
+
+
+def _reset_sex_filters_page3() -> None:
+    st.session_state.fc_sex_women = True
+    st.session_state.fc_sex_unisex = True
+    st.session_state.fc_sex_men = True
+
+
+def _selected_page3_sexes() -> list[str]:
+    selected: list[str] = []
+    if st.session_state.get("fc_sex_women", False):
+        selected.append("women")
+    if st.session_state.get("fc_sex_unisex", False):
+        selected.append("unisex")
+    if st.session_state.get("fc_sex_men", False):
+        selected.append("men")
+    return selected
+
+
+def _sync_page3_sex_filter_state(sex_counts: dict[str, int], scope_id: str) -> None:
+    if st.session_state.get("fc_prev_scope") != scope_id:
+        _reset_sex_filters_page3()
+        st.session_state.fc_show_all = False
+        st.session_state.fc_prev_scope = scope_id
+
+    if sex_counts["women"] == 0:
+        st.session_state.fc_sex_women = False
+    if sex_counts["unisex"] == 0:
+        st.session_state.fc_sex_unisex = False
+    if sex_counts["men"] == 0:
+        st.session_state.fc_sex_men = False
+
+    if any(sex_counts.values()) and not _selected_page3_sexes():
+        if sex_counts["women"] > 0:
+            st.session_state.fc_sex_women = True
+        elif sex_counts["unisex"] > 0:
+            st.session_state.fc_sex_unisex = True
+        else:
+            st.session_state.fc_sex_men = True
 
 
 def _prepare_family_plot_df(df_raw: pd.DataFrame) -> pd.DataFrame:
@@ -119,7 +344,7 @@ def _prepare_family_plot_df(df_raw: pd.DataFrame) -> pd.DataFrame:
     if "sex" not in df.columns:
         df["sex"] = ""
     else:
-        df["sex"] = df["sex"].fillna("").astype(str).str.strip().str.capitalize()
+        df["sex"] = df["sex"].map(_normalise_sex_bucket)
 
     return df
 
@@ -248,6 +473,9 @@ def _build_family_scatter(df_plot: pd.DataFrame, family: str, selected_subcatego
 
     scatter_df = df_plot.copy()
     scatter_df["votes_plot"] = scatter_df["votes"].clip(lower=1)
+    scatter_df["sex_display"] = (
+        scatter_df["sex"].fillna("").astype(str).str.strip().replace("", "-").str.capitalize()
+    )
 
     title_label = selected_subcategory if selected_subcategory else family
     x_min = float(scatter_df["rating"].min()) if not scatter_df["rating"].isna().all() else 0.0
@@ -264,7 +492,7 @@ def _build_family_scatter(df_plot: pd.DataFrame, family: str, selected_subcatego
         color_continuous_scale=_family_colorscale(family),
         labels={"rating": "Rating", "votes_plot": "Votes"},
         title=f"{title_label} — Rating vs Votes",
-        custom_data=["votes", "fragrance_category", "brand", "sex", "url"],
+        custom_data=["votes", "fragrance_category", "brand", "sex_display", "url"],
     )
 
     fig.update_traces(
@@ -465,7 +693,13 @@ def _render_subcategory_section(family_df: pd.DataFrame, selected_family: str) -
         )
 
     active_subcategory = st.session_state.fw_selected_subcategory
-    df_family_plot = _filter_by_subcategory_option(family_df, active_subcategory)
+    df_scope = _filter_by_subcategory_option(family_df, active_subcategory)
+    scope_id = f"{_normalise_label(selected_family)}::{_normalise_label(active_subcategory)}"
+    sex_counts = _build_sex_counts(df_scope)
+    _sync_page3_sex_filter_state(sex_counts, scope_id)
+
+    selected_sexes = _selected_page3_sexes()
+    df_family_plot = df_scope[df_scope["sex"].isin(selected_sexes)].copy()
 
     total_frags = int(len(df_family_plot))
     high_rating_count = int((df_family_plot["rating"] >= 4.0).sum()) if total_frags else 0
@@ -480,6 +714,16 @@ def _render_subcategory_section(family_df: pd.DataFrame, selected_family: str) -
 
     vote_quantile = 0.50 if total_votes > 150_000 else 0.30
     vote_threshold = float(df_family_plot["votes"].quantile(vote_quantile)) if total_frags > 0 else 0.0
+    if not st.session_state.fc_show_all:
+        shown = int((df_family_plot["votes"] >= vote_threshold).sum()) if total_frags > 0 else 0
+        filter_caption = f"Showing {shown} of {total_frags} fragrances (votes ≥ {vote_threshold:.0f})"
+        df_plot = df_family_plot[df_family_plot["votes"] >= vote_threshold].copy()
+    else:
+        filter_caption = f"Showing all {total_frags} fragrances"
+        df_plot = df_family_plot
+
+    sex_button_palette = _build_sex_button_palette(df_plot, selected_family)
+    _render_sex_button_palette_css(sex_button_palette)
 
     mcol1, mcol2, mcol3 = st.columns(3)
     with mcol1:
@@ -489,22 +733,68 @@ def _render_subcategory_section(family_df: pd.DataFrame, selected_family: str) -
     with mcol3:
         st.metric(label="Weighted avg rating", value=weighted_avg_display)
 
-    ctrl_col, _ = st.columns([2.2, 3.8])
-    with ctrl_col:
+    ctrl0, ctrl1, ctrl2, ctrl3 = st.columns([2.2, 1, 1, 1])
+    active_segments = (
+        int(st.session_state.fc_sex_women)
+        + int(st.session_state.fc_sex_unisex)
+        + int(st.session_state.fc_sex_men)
+    )
+    blocked_last_segment_toggle = False
+
+    with ctrl0:
         st.toggle("👁 Show all fragrances", key="fc_show_all")
 
-    if not st.session_state.fc_show_all:
-        shown = int((df_family_plot["votes"] >= vote_threshold).sum()) if total_frags > 0 else 0
-        filter_caption = f"Showing {shown} of {total_frags} fragrances (votes ≥ {vote_threshold:.0f})"
-        df_plot = df_family_plot[df_family_plot["votes"] >= vote_threshold].copy()
-    else:
-        filter_caption = f"Showing all {total_frags} fragrances"
-        df_plot = df_family_plot
+    with ctrl1:
+        women_label = f"Women ({sex_counts['women']})"
+        if st.button(
+            women_label,
+            key="fc_women_filter",
+            type="primary" if st.session_state.fc_sex_women else "secondary",
+            disabled=sex_counts["women"] == 0,
+        ):
+            if st.session_state.fc_sex_women and active_segments == 1:
+                blocked_last_segment_toggle = True
+            else:
+                st.session_state.fc_sex_women = not st.session_state.fc_sex_women
+                st.rerun()
 
-    st.caption(filter_caption)
+    with ctrl2:
+        unisex_label = f"Unisex ({sex_counts['unisex']})"
+        if st.button(
+            unisex_label,
+            key="fc_unisex_filter",
+            type="primary" if st.session_state.fc_sex_unisex else "secondary",
+            disabled=sex_counts["unisex"] == 0,
+        ):
+            if st.session_state.fc_sex_unisex and active_segments == 1:
+                blocked_last_segment_toggle = True
+            else:
+                st.session_state.fc_sex_unisex = not st.session_state.fc_sex_unisex
+                st.rerun()
+
+    with ctrl3:
+        men_label = f"Men ({sex_counts['men']})"
+        if st.button(
+            men_label,
+            key="fc_men_filter",
+            type="primary" if st.session_state.fc_sex_men else "secondary",
+            disabled=sex_counts["men"] == 0,
+        ):
+            if st.session_state.fc_sex_men and active_segments == 1:
+                blocked_last_segment_toggle = True
+            else:
+                st.session_state.fc_sex_men = not st.session_state.fc_sex_men
+                st.rerun()
+
+    status_col, warn_col = st.columns([2.2, 3])
+    with status_col:
+        st.caption(filter_caption)
+    with warn_col:
+        if blocked_last_segment_toggle:
+            st.caption("At least one segment must stay active.")
 
     if df_plot.empty:
-        st.info("No fragrances match the current subcategory filter.")
+        st.info("No fragrances match the current subcategory/sex filters.")
     else:
         family_fig = _build_family_scatter(df_plot, selected_family, active_subcategory)
         fig_html = family_fig.to_html(
@@ -693,6 +983,10 @@ def _init_state() -> None:
         "fw_selected_subcategory": None,
         "fw_last_sunburst_signature": None,
         "fc_show_all": False,
+        "fc_prev_scope": None,
+        "fc_sex_women": True,
+        "fc_sex_unisex": True,
+        "fc_sex_men": True,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -715,6 +1009,8 @@ def main() -> None:
             --border-subtle: #e5e7eb;
             --text-strong: #111827;
             --text-muted: #64748b;
+            --accent: #0f766e;
+            --accent-hover: #115e59;
         }
 
         div[data-testid="stMetric"] {
@@ -731,6 +1027,39 @@ def main() -> None:
         }
 
         div[data-testid="stMetricValue"] {
+            color: var(--text-strong);
+        }
+
+        div[data-testid="stButton"] > button {
+            border-radius: 999px;
+            font-weight: 600;
+            min-height: 2.75rem;
+            border: 1px solid #cbd5e1;
+            background: var(--surface);
+            color: var(--text-strong);
+            width: 100%;
+        }
+
+        div[data-testid="stButton"] > button:hover {
+            border-color: #94a3b8;
+            background: #f8fafc;
+            color: var(--text-strong);
+        }
+
+        div[data-testid="stButton"] > button[kind="primary"] {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #ffffff;
+        }
+
+        div[data-testid="stButton"] > button[kind="primary"]:hover {
+            background: var(--accent-hover);
+            border-color: var(--accent-hover);
+            color: #ffffff;
+        }
+
+        div[data-testid="stToggle"] label p {
+            font-weight: 600;
             color: var(--text-strong);
         }
 
