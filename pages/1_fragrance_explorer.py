@@ -59,6 +59,12 @@ def main() -> None:
             --text-muted: #64748b;
             --accent: #0f766e;
             --accent-hover: #115e59;
+            --tip-bg: linear-gradient(135deg, #f3fbf9 0%, #edf8f5 52%, #f8fbfc 100%);
+            --tip-border: #b9ddd7;
+            --tip-title: #0f4c46;
+            --tip-text: #334155;
+            --tip-icon-bg: #d7f0eb;
+            --tip-shadow: 0 8px 18px rgba(15, 118, 110, 0.14);
         }
 
         /* Sidebar styling */
@@ -131,6 +137,71 @@ def main() -> None:
             font-size: 1.3rem;
             margin-bottom: 1.5rem;
             font-weight: 600;
+        }
+
+        section[data-testid="stSidebar"] .sidebar-tip-card {
+            background: var(--tip-bg);
+            border: 1px solid var(--tip-border);
+            border-radius: 14px;
+            box-shadow: var(--tip-shadow);
+            padding: 0.95rem 1rem;
+            margin-top: 0.2rem;
+        }
+
+        section[data-testid="stSidebar"] .sidebar-tip-header {
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            margin-bottom: 0.7rem;
+        }
+
+        section[data-testid="stSidebar"] .sidebar-tip-icon {
+            width: 1.75rem;
+            height: 1.75rem;
+            border-radius: 999px;
+            background: var(--tip-icon-bg);
+            color: var(--accent);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.22);
+            flex-shrink: 0;
+        }
+
+        section[data-testid="stSidebar"] .sidebar-tip-title {
+            color: var(--tip-title);
+            font-size: 1.12rem;
+            font-weight: 700;
+            line-height: 1.2;
+            margin: 0;
+        }
+
+        section[data-testid="stSidebar"] .sidebar-tip-list {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+            display: grid;
+            gap: 0.6rem;
+        }
+
+        section[data-testid="stSidebar"] .sidebar-tip-item {
+            color: var(--tip-text);
+            line-height: 1.45;
+            font-size: 0.98rem;
+            padding-left: 0.95rem;
+            position: relative;
+        }
+
+        section[data-testid="stSidebar"] .sidebar-tip-item::before {
+            content: "";
+            width: 0.42rem;
+            height: 0.42rem;
+            border-radius: 999px;
+            background: var(--accent);
+            position: absolute;
+            left: 0;
+            top: 0.52rem;
         }
 
         /* Input fields */
@@ -213,6 +284,19 @@ def main() -> None:
                 padding-right: 1rem;
             }
 
+            section[data-testid="stSidebar"] .sidebar-tip-card {
+                border-radius: 12px;
+                padding: 0.85rem 0.9rem;
+            }
+
+            section[data-testid="stSidebar"] .sidebar-tip-title {
+                font-size: 1.03rem;
+            }
+
+            section[data-testid="stSidebar"] .sidebar-tip-item {
+                font-size: 0.93rem;
+            }
+
         }
         </style>
         """,
@@ -254,9 +338,21 @@ def main() -> None:
 
     # Keep helpful tip in the sidebar (no selector here)
     with st.sidebar:
-        st.markdown("### 💡 Tip")
-        st.markdown("Click on any data point to open the perfume's Fragrantica page.")
-        st.markdown("Click and hold to activate zoom in mode on the plot.")
+        st.markdown(
+            """
+            <div class="sidebar-tip-card" role="note" aria-label="Fragrance Explorer tips">
+                <div class="sidebar-tip-header">
+                    <span class="sidebar-tip-icon" aria-hidden="true">&#128161;</span>
+                    <p class="sidebar-tip-title">Tip</p>
+                </div>
+                <ul class="sidebar-tip-list">
+                    <li class="sidebar-tip-item">Click any point to open the fragrance on Fragrantica.</li>
+                    <li class="sidebar-tip-item">Click and hold, then drag to zoom the chart.</li>
+                </ul>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     # --- Sex filter state (initialise once; persists across reruns) ---
     for _k, _v in [("sex_women", True), ("sex_unisex", True), ("sex_men", True)]:
