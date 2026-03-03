@@ -129,6 +129,37 @@ def _normalise_rating(value: float, min_rating: float, max_rating: float) -> flo
     return max(0.0, min(1.0, (value - min_rating) / (max_rating - min_rating)))
 
 
+def _hex_to_rgba(hex_color: str, alpha: float) -> str:
+    r, g, b = _hex_to_rgb(hex_color)
+    a = max(0.0, min(1.0, float(alpha)))
+    return f"rgba({r},{g},{b},{a:.3f})"
+
+
+def _family_metric_card(label: str, value: str, percentile: float, family: str, col) -> None:
+    pct = max(0.0, min(1.0, float(percentile)))
+    # Keep accents in the readable range of the family palette.
+    accent_position = 0.24 + (0.70 * pct)
+    accent = _sample_colorscale_hex(_family_colorscale(family), accent_position)
+    text_accent = _mix_hex(accent, "#111827", 0.20)
+
+    col.markdown(
+        f"""
+        <div style="
+            background: {_hex_to_rgba(accent, 0.10)};
+            border: 1px solid {_hex_to_rgba(accent, 0.24)};
+            border-radius: 12px;
+            padding: 18px 12px;
+            text-align: center;
+        ">
+            <div style="font-size:26px; font-weight:700; color:{text_accent};">{value}</div>
+            <div style="font-size:12px; color:#6b7280; text-transform:uppercase;
+                        letter-spacing:0.5px; margin-top:4px;">{label}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _build_sex_button_palette(df_plot: pd.DataFrame, family: str) -> dict[str, dict[str, str]]:
     fallback_base = "#64748b"
     palette: dict[str, dict[str, str]] = {}
@@ -702,15 +733,132 @@ def _render_subcategory_section(family_df: pd.DataFrame, selected_family: str) -
     df_family_plot = df_scope[df_scope["sex"].isin(selected_sexes)].copy()
 
     total_frags = int(len(df_family_plot))
-    high_rating_count = int((df_family_plot["rating"] >= 4.0).sum()) if total_frags else 0
-    pct_high = (high_rating_count / total_frags) if total_frags else 0.0
     total_votes = float(df_family_plot["votes"].sum()) if total_frags else 0.0
-    weighted_avg = (
-        float((df_family_plot["rating"] * df_family_plot["votes"]).sum() / total_votes)
-        if total_votes > 0
-        else None
-    )
-    weighted_avg_display = f"{weighted_avg:.2f}" if weighted_avg is not None else "N/A"
+    consistency_score = 0.0
+    weighted_avg_rating_display = "N/A"
+    total_frags_pct = 0.5
+    consistency_pct = 0.5
+    weighted_rating_pct = 0.5
+
+    if total_frags > 0:
+        noise_threshold = float(df_family_plot["votes"].quantile(0.27))
+        qualified_df = df_family_plot[df_family_plot["votes"] > noise_threshold]
+        if len(qualified_df) > 0:
+            consistency_score = float((qualified_df["rating"] > 4.0).mean() * 100)
+
+        scope_df = family_df[family_df["sex"].isin(selected_sexes)].copy()
+        if not scope_df.empty:
+            if _is_family_option(active_subcategory):
+                scope_df["_metric_group"] = (
+                    scope_df["fragrance_category"]
+                    .fillna("")
+                    .astype(str)
+                    .str.strip()
+                    .map(lambda cat: cat.split()[0] if cat else "")
+                )
+                selected_group = _family_from_option(active_subcategory)
+            else:
+                scope_df["_metric_group"] = (
+                    scope_df["fragrance_category"]
+                    .fillna("")
+                    .astype(str)
+                    .str.strip()
+                )
+                selected_group = str(active_subcategory or "").strip()
+
+            scope_df = scope_df[scope_df["_metric_group"].ne("")].copy()
+            scope_df["_metric_group_norm"] = scope_df["_metric_group"].map(_normalise_label)
+            selected_group_norm = _normalise_label(selected_group)
+
+            if not scope_df.empty and selected_group_norm:
+                scope_with_weight = scope_df.assign(
+                    rating_x_votes=scope_df["rating"] * scope_df["votes"]
+                )
+                scope_group_stats = scope_with_weight.groupby(
+                    "_metric_group_norm",
+                    as_index=False,
+                ).agg(
+                    total_fragrances=("name", "count"),
+                    total_votes=("votes", "sum"),
+                    sum_weighted_rating=("rating_x_votes", "sum"),
+                )
+                scope_group_stats["Weighted_Rating"] = float("nan")
+
+                weighted_base = scope_group_stats[scope_group_stats["total_votes"] > 0].copy()
+                if not weighted_base.empty:
+                    weighted_base["R"] = (
+                        weighted_base["sum_weighted_rating"] / weighted_base["total_votes"]
+                    )
+                    C = float(
+                        weighted_base["sum_weighted_rating"].sum()
+                        / weighted_base["total_votes"].sum()
+                    )
+                    m = float(weighted_base["total_votes"].quantile(0.10))
+                    v = weighted_base["total_votes"]
+                    R = weighted_base["R"]
+                    weighted_base["Weighted_Rating"] = (v / (v + m) * R) + (m / (v + m) * C)
+                    scope_group_stats = scope_group_stats.merge(
+                        weighted_base[["_metric_group_norm", "Weighted_Rating"]],
+                        on="_metric_group_norm",
+                        how="left",
+                        suffixes=("", "_calc"),
+                    )
+                    scope_group_stats["Weighted_Rating"] = scope_group_stats["Weighted_Rating_calc"]
+                    scope_group_stats = scope_group_stats.drop(columns=["Weighted_Rating_calc"])
+
+                group_noise = (
+                    scope_df.groupby("_metric_group_norm")["votes"]
+                    .quantile(0.27)
+                    .rename("noise_threshold")
+                )
+                qualified_scope = scope_df.join(group_noise, on="_metric_group_norm")
+                qualified_scope = qualified_scope[
+                    qualified_scope["votes"] > qualified_scope["noise_threshold"]
+                ]
+                if not qualified_scope.empty:
+                    consistency_by_group = (
+                        qualified_scope.groupby("_metric_group_norm")["rating"]
+                        .apply(lambda s: (s > 4.0).mean() * 100)
+                        .rename("Consistency_Score")
+                        .reset_index()
+                    )
+                    scope_group_stats = scope_group_stats.merge(
+                        consistency_by_group,
+                        on="_metric_group_norm",
+                        how="left",
+                    )
+                else:
+                    scope_group_stats["Consistency_Score"] = float("nan")
+                scope_group_stats["Consistency_Score"] = (
+                    scope_group_stats["Consistency_Score"].fillna(0.0)
+                )
+
+                selected_scope_row = scope_group_stats[
+                    scope_group_stats["_metric_group_norm"] == selected_group_norm
+                ]
+                if not selected_scope_row.empty:
+                    selected_row = selected_scope_row.iloc[0]
+                    consistency_score = float(selected_row["Consistency_Score"])
+                    weighted_rating_value = selected_row["Weighted_Rating"]
+                    if pd.notna(weighted_rating_value):
+                        weighted_avg_rating_display = f"{float(weighted_rating_value):.2f}"
+
+                    def _pct(value: float, series: pd.Series) -> float:
+                        valid = pd.to_numeric(series, errors="coerce").dropna()
+                        if valid.empty:
+                            return 0.5
+                        lo, hi = float(valid.min()), float(valid.max())
+                        if hi == lo:
+                            return 0.5
+                        return max(0.0, min(1.0, (float(value) - lo) / (hi - lo)))
+
+                    total_frags_pct = _pct(float(total_frags), scope_group_stats["total_fragrances"])
+                    consistency_pct = _pct(consistency_score, scope_group_stats["Consistency_Score"])
+                    if pd.notna(weighted_rating_value):
+                        weighted_rating_pct = _pct(
+                            float(weighted_rating_value),
+                            scope_group_stats["Weighted_Rating"],
+                        )
 
     vote_quantile = 0.50 if total_votes > 150_000 else 0.30
     vote_threshold = float(df_family_plot["votes"].quantile(vote_quantile)) if total_frags > 0 else 0.0
@@ -726,12 +874,28 @@ def _render_subcategory_section(family_df: pd.DataFrame, selected_family: str) -
     _render_sex_button_palette_css(sex_button_palette)
 
     mcol1, mcol2, mcol3 = st.columns(3)
-    with mcol1:
-        st.metric(label="Number of fragrances", value=f"{total_frags}")
-    with mcol2:
-        st.metric(label="Rating ≥ 4.0", value=f"{pct_high:.1%}")
-    with mcol3:
-        st.metric(label="Weighted avg rating", value=weighted_avg_display)
+    _family_metric_card(
+        "Number of fragrances",
+        f"{total_frags:,}",
+        total_frags_pct,
+        selected_family,
+        mcol1,
+    )
+    _family_metric_card(
+        "Consistency score",
+        f"{consistency_score:.1f}%",
+        consistency_pct,
+        selected_family,
+        mcol2,
+    )
+    _family_metric_card(
+        "Weighted avg rating",
+        weighted_avg_rating_display,
+        weighted_rating_pct,
+        selected_family,
+        mcol3,
+    )
+    st.markdown("<div style='height:0.95rem;'></div>", unsafe_allow_html=True)
 
     ctrl0, ctrl1, ctrl2, ctrl3 = st.columns([2.2, 1, 1, 1])
     active_segments = (

@@ -39,6 +39,50 @@ def _build_top10_title(selected_brand: object) -> str:
     return f"Top 10 fragrances by {normalized_brand} "
 
 
+def _percentile_color(t: float) -> str:
+    """Return an RGB string along a 5-stop professional gradient."""
+    stops = [
+        (0.00, 203, 213, 225),
+        (0.25, 94, 200, 200),
+        (0.50, 16, 185, 129),
+        (0.75, 99, 102, 241),
+        (1.00, 124, 58, 237),
+    ]
+    i = 0
+    for i in range(len(stops) - 2):
+        if t <= stops[i + 1][0]:
+            break
+    a, b = stops[i], stops[i + 1]
+    f = (t - a[0]) / (b[0] - a[0]) if b[0] != a[0] else 0.0
+    r = int(a[1] + f * (b[1] - a[1]))
+    g = int(a[2] + f * (b[2] - a[2]))
+    bl = int(a[3] + f * (b[3] - a[3]))
+    return f"rgb({r},{g},{bl})"
+
+
+def _metric_card(label: str, value: str, percentile: float, col) -> None:
+    """Render a color-coded metric inside a Streamlit column."""
+    color = _percentile_color(percentile)
+    pct_label = f"P{int(percentile * 100)}"
+    col.markdown(
+        f"""
+        <div style="
+            background: {color.replace('rgb', 'rgba').replace(')', ',0.08)')};
+            border-radius: 12px; padding: 18px 12px; text-align: center;
+        ">
+            <div style="font-size:26px; font-weight:700; color:{color};">{value}</div>
+            <div style="font-size:12px; color:#6b7280; text-transform:uppercase;
+                        letter-spacing:0.5px; margin-top:4px;">{label}</div>
+            <span style="display:inline-block; margin-top:6px; padding:2px 8px;
+                         border-radius:10px; font-size:11px; font-weight:600;
+                         background:{color.replace('rgb','rgba').replace(')',',0.14)')};
+                         color:{color};">{pct_label}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def main() -> None:
     st.set_page_config(
         page_title="Fragrance Explorer",
@@ -329,10 +373,12 @@ def main() -> None:
         st.stop()
 
     # --- Brand selector placed in main content (compact header row) ---
-    # Make the selector row wider (approximately 2x wider than before)
-    # Previously: [1.2, 3] -> ~28.6% width for the selector area.
-    # Now: [4, 3] -> ~57.1% width, effectively doubling the available space.
-    sel_col, _ = st.columns([4, 3])
+    # Width control:
+    # selector_width_pct = selector_weight / (selector_weight + spacer_weight)
+    # Current setting: 2/(2+3)=40.0%, which is ~30% shorter than 57.1% (old 4/(4+3)).
+    selector_weight = 2.0
+    spacer_weight = 3.0
+    sel_col, _ = st.columns([selector_weight, spacer_weight])
     default_brand = "Amouage" if "Amouage" in brands else brands[0]
     with sel_col:
         selected_brand = brand_selector(brands, default=default_brand)
@@ -404,30 +450,100 @@ def main() -> None:
     # --- Summary metrics and filters ---
     brand_df = brand_all_df[brand_all_df["sex"].isin(selected_sexes)]
     total_frags = int(len(brand_df))
-    # Guard against empty slice; ratings are coerced to numeric in load_data
+    consistency_score = 0.0
+    weighted_avg_rating_display = "N/A"
+    total_frags_pct = 0.5
+    consistency_pct = 0.5
+    weighted_rating_pct = 0.5
+
+    # Guard against empty slice; ratings are coerced to numeric in load_data.
     if total_frags > 0:
-        high_rating_count = int((brand_df["rating"] >= 4.0).sum())
-        pct_high = high_rating_count / total_frags
-        total_votes = float(brand_df["votes"].sum())
-        if total_votes > 0:
-            weighted_avg_rating = float((brand_df["rating"] * brand_df["votes"]).sum() / total_votes)
-            weighted_avg_rating_display = f"{weighted_avg_rating:.2f}"
-        else:
-            weighted_avg_rating_display = "N/A"
-    else:
-        high_rating_count = 0
-        pct_high = 0.0
-        weighted_avg_rating_display = "N/A"
+        noise_threshold = float(brand_df["votes"].quantile(0.27))
+        qualified_df = brand_df[brand_df["votes"] > noise_threshold]
+        if len(qualified_df) > 0:
+            consistency_score = float((qualified_df["rating"] > 4.0).mean() * 100)
+
+        # Compute cross-brand stats inside current sex-filter scope.
+        scope_df = df[df["sex"].isin(selected_sexes)]
+        if not scope_df.empty:
+            scope_with_weight = scope_df.assign(rating_x_votes=scope_df["rating"] * scope_df["votes"])
+            scope_brand_stats = scope_with_weight.groupby("brand", as_index=False).agg(
+                total_fragrances=("name", "count"),
+                total_votes=("votes", "sum"),
+                sum_weighted_rating=("rating_x_votes", "sum"),
+            )
+            scope_brand_stats["Weighted_Rating"] = float("nan")
+
+            weighted_base = scope_brand_stats[scope_brand_stats["total_votes"] > 0].copy()
+            if not weighted_base.empty:
+                weighted_base["R"] = weighted_base["sum_weighted_rating"] / weighted_base["total_votes"]
+                C = float(
+                    weighted_base["sum_weighted_rating"].sum()
+                    / weighted_base["total_votes"].sum()
+                )
+                m = float(weighted_base["total_votes"].quantile(0.10))
+                v = weighted_base["total_votes"]
+                R = weighted_base["R"]
+                weighted_base["Weighted_Rating"] = (v / (v + m) * R) + (m / (v + m) * C)
+                scope_brand_stats = scope_brand_stats.merge(
+                    weighted_base[["brand", "Weighted_Rating"]],
+                    on="brand",
+                    how="left",
+                    suffixes=("", "_calc"),
+                )
+                scope_brand_stats["Weighted_Rating"] = scope_brand_stats["Weighted_Rating_calc"]
+                scope_brand_stats = scope_brand_stats.drop(columns=["Weighted_Rating_calc"])
+
+            brand_noise = scope_df.groupby("brand")["votes"].quantile(0.27).rename("noise_threshold")
+            qualified_scope = scope_df.join(brand_noise, on="brand")
+            qualified_scope = qualified_scope[qualified_scope["votes"] > qualified_scope["noise_threshold"]]
+            if not qualified_scope.empty:
+                consistency_by_brand = (
+                    qualified_scope.groupby("brand")["rating"]
+                    .apply(lambda s: (s > 4.0).mean() * 100)
+                    .rename("Consistency_Score")
+                    .reset_index()
+                )
+                scope_brand_stats = scope_brand_stats.merge(
+                    consistency_by_brand,
+                    on="brand",
+                    how="left",
+                )
+            else:
+                scope_brand_stats["Consistency_Score"] = float("nan")
+            scope_brand_stats["Consistency_Score"] = scope_brand_stats["Consistency_Score"].fillna(0.0)
+
+            selected_scope_row = scope_brand_stats[scope_brand_stats["brand"] == selected_brand]
+            if not selected_scope_row.empty:
+                selected_row = selected_scope_row.iloc[0]
+                consistency_score = float(selected_row["Consistency_Score"])
+                weighted_rating_value = selected_row["Weighted_Rating"]
+                if weighted_rating_value == weighted_rating_value:
+                    weighted_avg_rating_display = f"{float(weighted_rating_value):.2f}"
+
+                def _pct(value: float, series) -> float:
+                    valid = series.dropna()
+                    if valid.empty:
+                        return 0.5
+                    lo, hi = float(valid.min()), float(valid.max())
+                    if hi == lo:
+                        return 0.5
+                    return max(0.0, min(1.0, (float(value) - lo) / (hi - lo)))
+
+                total_frags_pct = _pct(float(total_frags), scope_brand_stats["total_fragrances"])
+                consistency_pct = _pct(consistency_score, scope_brand_stats["Consistency_Score"])
+                if weighted_avg_rating_display != "N/A":
+                    weighted_rating_pct = _pct(
+                        float(weighted_rating_value),
+                        scope_brand_stats["Weighted_Rating"],
+                    )
 
     # --- Vote threshold filter (show top fragrances by default) ---
 
     mcol1, mcol2, mcol3 = st.columns(3)
-    with mcol1:
-        st.metric(label="Number of fragrances", value=f"{total_frags}")
-    with mcol2:
-        st.metric(label="Rating ≥ 4.0", value=f"{pct_high:.1%}")
-    with mcol3:
-        st.metric(label="Weighted avg rating", value=weighted_avg_rating_display)
+    _metric_card("Number of fragrances", f"{total_frags}", total_frags_pct, mcol1)
+    _metric_card("Consistency score", f"{consistency_score:.1f}%", consistency_pct, mcol2)
+    _metric_card("Weighted avg rating", weighted_avg_rating_display, weighted_rating_pct, mcol3)
 
     st.markdown('<p class="toolbar-note">Metrics are calculated within current filters.</p>', unsafe_allow_html=True)
 
