@@ -714,7 +714,8 @@ def _render_subcategory_section(family_df: pd.DataFrame, selected_family: str) -
             st.session_state.fc_show_all = False
             st.session_state.fc_prev_subcategory = new_sub
 
-    sel_col, _ = st.columns([4, 3])
+    # Make selector ~30% shorter than previous width (57.1% -> 40.0%).
+    sel_col, _ = st.columns([2, 3])
     with sel_col:
         st.selectbox(
             "Subcategory",

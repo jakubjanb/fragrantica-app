@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.colors import sample_colorscale
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -148,6 +149,31 @@ def _build_figure(df: pd.DataFrame, highlight_brand: str | None = None) -> go.Fi
     x = df["Weighted_Rating"]
     y = df["total_votes"]
     sizes = df["_marker_size"].tolist()
+    rating_min = float(x.min())
+    rating_max = float(x.max())
+
+    def _rating_to_viridis_color(rating: float) -> str:
+        if rating_max == rating_min:
+            t = 0.5
+        else:
+            t = max(0.0, min(1.0, (float(rating) - rating_min) / (rating_max - rating_min)))
+        return sample_colorscale("Viridis", [t])[0]
+
+    def _hover_text_color(bg_color: str) -> str:
+        if bg_color.startswith("#"):
+            hex_color = bg_color.lstrip("#")
+            if len(hex_color) == 3:
+                hex_color = "".join(ch * 2 for ch in hex_color)
+            r = int(hex_color[0:2], 16)
+            g = int(hex_color[2:4], 16)
+            b = int(hex_color[4:6], 16)
+        elif bg_color.startswith("rgb"):
+            rgb = bg_color[bg_color.find("(") + 1 : bg_color.find(")")].split(",")
+            r, g, b = (int(float(c.strip())) for c in rgb[:3])
+        else:
+            return "#111827"
+        luminance = 0.299 * r + 0.587 * g + 0.114 * b
+        return "#111827" if luminance > 165 else "#f9fafb"
 
     # --- colours / opacities depending on highlight state ---
     if highlight_brand:
@@ -165,11 +191,17 @@ def _build_figure(df: pd.DataFrame, highlight_brand: str | None = None) -> go.Fi
         sizes = [
             max(s * 1.35, 20) if m else s for m, s in zip(mask, sizes)
         ]
+        hover_bgcolors = [
+            _CFG["highlight_color"] if m else _rating_to_viridis_color(val)
+            for m, val in zip(mask, df["Weighted_Rating"])
+        ]
     else:
         colors = df["Weighted_Rating"].tolist()
         opacities = [0.82] * len(df)
         line_widths = [0.8] * len(df)
         line_colors = ["rgba(255,255,255,0.55)"] * len(df)
+        hover_bgcolors = [_rating_to_viridis_color(val) for val in df["Weighted_Rating"]]
+    hover_font_colors = [_hover_text_color(c) for c in hover_bgcolors]
 
     fig = go.Figure()
 
@@ -210,6 +242,11 @@ def _build_figure(df: pd.DataFrame, highlight_brand: str | None = None) -> go.Fi
                 ),
                 line=dict(width=line_widths, color=line_colors),
                 opacity=opacities,
+            ),
+            hoverlabel=dict(
+                bgcolor=hover_bgcolors,
+                bordercolor=hover_bgcolors,
+                font=dict(color=hover_font_colors),
             ),
         )
     )
