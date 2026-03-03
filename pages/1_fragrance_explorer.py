@@ -333,8 +333,9 @@ def main() -> None:
     # Previously: [1.2, 3] -> ~28.6% width for the selector area.
     # Now: [4, 3] -> ~57.1% width, effectively doubling the available space.
     sel_col, _ = st.columns([4, 3])
+    default_brand = "Amouage" if "Amouage" in brands else brands[0]
     with sel_col:
-        selected_brand = brand_selector(brands, default=None)
+        selected_brand = brand_selector(brands, default=default_brand)
 
     # Keep helpful tip in the sidebar (no selector here)
     with st.sidebar:

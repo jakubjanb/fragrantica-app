@@ -381,6 +381,17 @@ def main() -> None:
         "Interactive scatter plot of every brand — **Quality vs. Popularity**. "
         "Marker size reflects total votes (power-scaled). Search & highlight any brand."
     )
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stToggle"] label p {
+            font-weight: 600;
+            color: #111827;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
     # ── Load data ────────────────────────────────────────────
     project_root = Path(__file__).resolve().parent.parent
@@ -462,16 +473,9 @@ def main() -> None:
     if "brands_show_all" not in st.session_state:
         st.session_state.brands_show_all = False
 
-    if not st.session_state.brands_show_all:
-        if st.button("👁 Show all brands"):
-            st.session_state.brands_show_all = True
-            st.rerun()
-    else:
-        if st.button("🔍 Show top brands"):
-            st.session_state.brands_show_all = False
-            st.rerun()
+    st.toggle("👁 Show all brands", key="brands_show_all")
 
-    vote_threshold = df["total_votes"].quantile(0.10)
+    vote_threshold = df["total_votes"].quantile(0.30)
     total_brands = len(df)
 
     if not st.session_state.brands_show_all:
