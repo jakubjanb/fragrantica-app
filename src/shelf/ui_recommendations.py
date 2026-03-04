@@ -5,8 +5,13 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from src.shelf.constants import ENABLE_RECOMMENDATION_LOG
+from src.shelf.constants import (
+    ENABLE_RECOMMENDATION_LOG,
+    RECOMMENDER_DEFAULT_DIVERSITY_LAMBDA,
+    RECOMMENDER_V2_ENABLED,
+)
 from src.shelf.domain import recommend
+from src.shelf.recommender.pipeline import get_recommender_model_meta, set_runtime_options
 from src.shelf.repository import _log_recommendations
 from src.shelf.utils import _format_sex_label
 
@@ -17,6 +22,14 @@ def _render_recommendations(user_id: str, df_catalog: pd.DataFrame, df_shelf_enr
         '<p class="section-note">Get suggestions based on your shelf profile and audience preference.</p>',
         unsafe_allow_html=True,
     )
+    if RECOMMENDER_V2_ENABLED:
+        meta = get_recommender_model_meta()
+        if meta:
+            model_version = str(meta.get("model_version", "v2"))
+            trained_at = str(meta.get("trained_at", "unknown"))
+            st.caption(f"Model: {model_version} | Trained: {trained_at}")
+        else:
+            st.caption("Model: legacy fallback (Recommender V2 artifacts not found).")
 
     sex_options = {
         "Auto (from shelf)": "auto",
@@ -25,11 +38,26 @@ def _render_recommendations(user_id: str, df_catalog: pd.DataFrame, df_shelf_enr
         "Unisex": "unisex",
         "Men": "men",
     }
-    ctrl1, ctrl2 = st.columns([3, 2])
+    ctrl1, ctrl2, ctrl3 = st.columns([3, 2, 2])
     with ctrl1:
         selected_sex_label = st.selectbox("Preferred audience", options=list(sex_options.keys()))
     with ctrl2:
         top_n = st.slider("Number of recommendations", min_value=5, max_value=20, value=10, step=1)
+    with ctrl3:
+        diversity_lambda = st.slider(
+            "Diversity (MMR λ)",
+            min_value=0.6,
+            max_value=0.9,
+            value=float(RECOMMENDER_DEFAULT_DIVERSITY_LAMBDA),
+            step=0.05,
+        )
+
+    debug_mode = st.checkbox(
+        "Debug scores",
+        value=False,
+        help="Show component scores (CF/category/quality/MMR inputs).",
+    )
+    set_runtime_options(debug=debug_mode, mmr_lambda=float(diversity_lambda))
 
     recs_df = recommend(
         df_catalog=df_catalog,
@@ -45,6 +73,9 @@ def _render_recommendations(user_id: str, df_catalog: pd.DataFrame, df_shelf_enr
     view_df = recs_df.copy()
     if "score" in view_df.columns:
         view_df["score"] = pd.to_numeric(view_df["score"], errors="coerce").round(4)
+    for col in ("cf_score", "cf_norm", "cat_affinity", "cat_norm", "quality_score", "quality_norm"):
+        if col in view_df.columns:
+            view_df[col] = pd.to_numeric(view_df[col], errors="coerce").round(4)
     view_df = view_df.rename(
         columns={
             "brand": "Brand",
@@ -55,6 +86,18 @@ def _render_recommendations(user_id: str, df_catalog: pd.DataFrame, df_shelf_enr
             "votes": "Votes",
             "family": "Family",
             "score": "Score",
+            "cf_score": "CF raw",
+            "cf_norm": "CF",
+            "cat_affinity": "Cat affinity raw",
+            "cat_norm": "Cat affinity",
+            "quality_score": "Quality raw",
+            "quality_norm": "Quality",
+            "cf_component": "CF component",
+            "cat_component": "Cat component",
+            "quality_component": "Quality component",
+            "sex_score": "Audience score",
+            "bayesian_rating": "Bayesian rating",
+            "quality_prior": "Quality prior z",
         }
     )
     if "Audience" in view_df.columns:

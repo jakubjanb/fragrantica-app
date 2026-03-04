@@ -11,10 +11,13 @@ from src.shelf.constants import (
     FAMILY_COLORS,
     FAMILY_KEYWORDS,
     FAMILY_ORDER,
+    RECOMMENDER_V2_ENABLED,
     TOTAL_WHEEL_CATEGORIES,
     WHEEL_EXCLUDED_FAMILIES,
     WHEEL_FAMILY_ORDER,
 )
+from src.shelf.recommender.artifacts import artifacts_available
+from src.shelf.recommender.pipeline import recommend_hybrid
 from src.shelf.utils import _item_key, _lower_or_empty, _normalize_sex
 
 
@@ -87,7 +90,7 @@ def _enrich_shelf_with_catalog(df_shelf: pd.DataFrame, df_catalog: pd.DataFrame)
     return merged.drop(columns=[c for c in ("brand_norm", "name_norm", "fragrance_id_catalog") if c in merged.columns])
 
 
-def recommend(
+def _recommend_legacy(
     df_catalog: pd.DataFrame,
     df_shelf: pd.DataFrame,
     user_pref_sex: str,
@@ -219,6 +222,40 @@ def recommend(
     preferred_cols = ["brand", "name", "sex", "fragrance_category", "rating", "votes", "family", "score", "fragrance_id"]
     existing_cols = [c for c in preferred_cols if c in out.columns]
     return out[existing_cols].copy()
+
+
+def recommend(
+    df_catalog: pd.DataFrame,
+    df_shelf: pd.DataFrame,
+    user_pref_sex: str,
+    top_n: int = 10,
+) -> pd.DataFrame:
+    """
+    Public recommendation entry point.
+
+    Uses Recommender V2 when enabled and artifacts are available; otherwise
+    falls back to the original heuristic recommender.
+    """
+    if RECOMMENDER_V2_ENABLED and artifacts_available():
+        try:
+            hybrid = recommend_hybrid(
+                df_catalog=df_catalog,
+                df_shelf=df_shelf,
+                user_pref_sex=user_pref_sex,
+                top_n=top_n,
+            )
+            if not hybrid.empty:
+                return hybrid
+        except Exception:
+            # Keep shelf page resilient even when artifacts/model are stale.
+            pass
+
+    return _recommend_legacy(
+        df_catalog=df_catalog,
+        df_shelf=df_shelf,
+        user_pref_sex=user_pref_sex,
+        top_n=top_n,
+    )
 
 
 def coverage_stats(df_shelf_with_catalog: pd.DataFrame) -> dict[str, Any]:

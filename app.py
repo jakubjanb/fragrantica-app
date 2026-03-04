@@ -168,7 +168,7 @@ def main() -> None:
         st.markdown(f'<div class="hero-title">{img_tag} Fragrance World</div>', unsafe_allow_html=True)
         st.markdown(
             '<div class="hero-subtitle">'
-            "Interactive dashboards for exploring perfume ratings, brand positioning, and popularity — powered by Fragrantica."
+            "Interactive dashboards for exploring perfume ratings, brand positioning, fragrance families, and personalized recommendations."
             "</div>",
             unsafe_allow_html=True,
         )
@@ -242,7 +242,7 @@ def main() -> None:
 
     # ── Sidebar ─────────────────────────────────────────────────────
     with st.sidebar:
-        st.caption("Built with Streamlit & Plotly · Data from Fragrantica")
+        st.caption("An independent data exploration concept powered by Fragrantica.")
 
 
 if __name__ == "__main__":
