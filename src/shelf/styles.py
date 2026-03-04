@@ -41,38 +41,63 @@ def _inject_page_styles() -> None:
             margin-bottom: 0.6rem;
         }
 
-        .coverage-stat-row {
+        .coverage-metric-row {
             display: flex;
             flex-wrap: wrap;
-            gap: 0.75rem;
+            justify-content: center;
+            gap: 0.675rem;
             margin-bottom: 0.6rem;
         }
 
-        .coverage-stat-card {
-            flex: 1 1 240px;
-            min-width: 210px;
-            background: var(--surface);
-            border: 1px solid var(--border-subtle);
-            border-radius: 14px;
-            padding: 0.65rem 0.9rem 0.7rem;
-            min-height: 104px;
+        .coverage-metric-card {
+            flex: 0 1 calc(36% - 0.675rem);
+            max-width: calc(36% - 0.675rem);
+            min-width: 234px;
+            background: var(--metric-bg, #f8fafc);
+            border-radius: 10.8px;
+            padding: 0.81rem 0.72rem 0.74rem;
+            min-height: 121px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         }
 
-        .coverage-stat-label {
+        .coverage-metric-card .coverage-metric-value {
             margin: 0;
-            color: var(--text-muted);
-            font-size: 0.88rem;
-            font-weight: 500;
-            line-height: 1.25;
-        }
-
-        .coverage-stat-value {
-            margin: 0.3rem 0 0;
-            color: var(--text-strong);
-            font-size: 2.5rem;
-            font-weight: 600;
+            color: var(--metric-color, var(--text-strong));
+            font-size: 23px !important;
+            font-weight: 700;
             line-height: 1.08;
             letter-spacing: -0.02em;
+        }
+
+        .coverage-metric-label {
+            margin: 0.225rem 0 0;
+            color: #6b7280;
+            font-size: 0.7rem;
+            font-weight: 600;
+            line-height: 1.25;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+        }
+
+        .coverage-metric-detail {
+            margin: 0.495rem 0 0;
+            color: #475569;
+            font-size: 0.85rem;
+            font-weight: 500;
+            line-height: 1.3;
+            display: inline-flex;
+            align-items: baseline;
+            justify-content: center;
+            gap: 0.315rem;
+            flex-wrap: wrap;
+        }
+
+        .coverage-metric-detail-value {
+            color: #0f172a;
+            font-weight: 500;
         }
 
         div[data-baseweb="popover"] ul,
@@ -186,14 +211,15 @@ def _inject_page_styles() -> None:
                 padding-right: 1rem;
             }
 
-            .coverage-stat-card {
+            .coverage-metric-card {
                 flex: 1 1 calc(50% - 0.75rem);
-                min-width: 190px;
+                max-width: none;
+                min-width: 198px;
             }
         }
 
         @media (max-width: 640px) {
-            .coverage-stat-card {
+            .coverage-metric-card {
                 flex: 1 1 100%;
                 min-width: 0;
             }

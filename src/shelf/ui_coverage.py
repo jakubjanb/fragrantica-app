@@ -59,6 +59,35 @@ def _best_contrast_text(bg_hex: str) -> str:
     return "#ffffff" if white_ratio >= black_ratio else "#111827"
 
 
+def _metric_color(t: float) -> tuple[int, int, int]:
+    """Return a color from the same gradient used in Fragrance Explorer metrics."""
+    stops = [
+        (0.00, 203, 213, 225),
+        (0.25, 94, 200, 200),
+        (0.50, 16, 185, 129),
+        (0.75, 99, 102, 241),
+        (1.00, 124, 58, 237),
+    ]
+    clamped = max(0.0, min(1.0, t))
+    idx = 0
+    for idx in range(len(stops) - 1):
+        if clamped <= stops[idx + 1][0]:
+            break
+    start, end = stops[idx], stops[idx + 1]
+    fraction = (
+        (clamped - start[0]) / (end[0] - start[0]) if end[0] != start[0] else 0.0
+    )
+    r = int(start[1] + fraction * (end[1] - start[1]))
+    g = int(start[2] + fraction * (end[2] - start[2]))
+    b = int(start[3] + fraction * (end[3] - start[3]))
+    return (r, g, b)
+
+
+def _rgba(rgb: tuple[int, int, int], alpha: float) -> str:
+    r, g, b = rgb
+    return f"rgba({r},{g},{b},{alpha:.3f})"
+
+
 def _render_coverage(df_shelf_enriched: pd.DataFrame) -> None:
     try:
         import plotly.graph_objects as go
@@ -74,21 +103,36 @@ def _render_coverage(df_shelf_enriched: pd.DataFrame) -> None:
     stats = coverage_stats(df_shelf_enriched)
 
     metric_cards = [
-        ("Coverage", f"{stats['coverage_pct']:.1f}%"),
-        ("Covered families", f"{stats['covered_families']} / {stats['total_families']}"),
-        ("Category coverage", f"{stats['category_coverage_pct']:.1f}%"),
-        ("Covered categories", f"{stats['covered_categories']} / {stats['total_categories']}"),
+        (
+            "Family coverage",
+            f"{stats['coverage_pct']:.1f}%",
+            "Covered families",
+            f"{stats['covered_families']} / {stats['total_families']}",
+            _metric_color(stats["coverage_pct"] / 100.0),
+        ),
+        (
+            "Category coverage",
+            f"{stats['category_coverage_pct']:.1f}%",
+            "Covered categories",
+            f"{stats['covered_categories']} / {stats['total_categories']}",
+            _metric_color(stats["category_coverage_pct"] / 100.0),
+        ),
     ]
     cards_html = "".join(
         (
-            '<div class="coverage-stat-card">'
-            f'<p class="coverage-stat-label">{label}</p>'
-            f'<p class="coverage-stat-value">{value}</p>'
+            '<div class="coverage-metric-card" '
+            f'style="--metric-color:{_rgba(color, 1.0)};--metric-bg:{_rgba(color, 0.08)};">'
+            f'<p class="coverage-metric-value">{value}</p>'
+            f'<p class="coverage-metric-label">{label}</p>'
+            '<p class="coverage-metric-detail">'
+            f'<span class="coverage-metric-detail-label">{detail_label}</span>'
+            f'<span class="coverage-metric-detail-value">{detail_value}</span>'
+            "</p>"
             "</div>"
         )
-        for label, value in metric_cards
+        for label, value, detail_label, detail_value, color in metric_cards
     )
-    st.markdown(f'<div class="coverage-stat-row">{cards_html}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="coverage-metric-row">{cards_html}</div>', unsafe_allow_html=True)
 
     data = _build_sunburst_data(df_shelf_enriched)
     total = data["total_items"]
