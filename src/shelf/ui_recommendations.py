@@ -16,6 +16,17 @@ from src.shelf.repository import _log_recommendations
 from src.shelf.utils import _format_sex_label
 
 
+def _normalize_link(value: object) -> str | None:
+    if value is None or pd.isna(value):
+        return None
+    link = str(value).strip()
+    if not link or link.lower() in {"nan", "none"}:
+        return None
+    if link.startswith(("http://", "https://")):
+        return link
+    return None
+
+
 def _render_recommendations(user_id: str, df_catalog: pd.DataFrame, df_shelf_enriched: pd.DataFrame) -> None:
     st.subheader("Recommendations")
     st.markdown(
@@ -76,6 +87,16 @@ def _render_recommendations(user_id: str, df_catalog: pd.DataFrame, df_shelf_enr
     for col in ("cf_score", "cf_norm", "cat_affinity", "cat_norm", "quality_score", "quality_norm"):
         if col in view_df.columns:
             view_df[col] = pd.to_numeric(view_df[col], errors="coerce").round(4)
+
+    if "url" in view_df.columns:
+        view_df["Link"] = view_df["url"].apply(_normalize_link)
+    elif "fragrance_id" in view_df.columns:
+        view_df["Link"] = view_df["fragrance_id"].apply(_normalize_link)
+
+    for raw_col in ("votes", "fragrance_id", "url"):
+        if raw_col in view_df.columns:
+            view_df = view_df.drop(columns=raw_col)
+
     view_df = view_df.rename(
         columns={
             "brand": "Brand",
@@ -83,7 +104,6 @@ def _render_recommendations(user_id: str, df_catalog: pd.DataFrame, df_shelf_enr
             "sex": "Audience",
             "fragrance_category": "Category",
             "rating": "Rating",
-            "votes": "Votes",
             "family": "Family",
             "score": "Score",
             "cf_score": "CF raw",
@@ -102,7 +122,20 @@ def _render_recommendations(user_id: str, df_catalog: pd.DataFrame, df_shelf_enr
     )
     if "Audience" in view_df.columns:
         view_df["Audience"] = view_df["Audience"].apply(_format_sex_label)
-    st.dataframe(view_df, use_container_width=True, hide_index=True)
+
+    column_config: dict[str, st.column_config.Column] = {}
+    if "Link" in view_df.columns:
+        column_config["Link"] = st.column_config.LinkColumn(
+            "Link",
+            display_text="Open",
+        )
+
+    st.dataframe(
+        view_df,
+        use_container_width=True,
+        hide_index=True,
+        column_config=column_config,
+    )
 
     if ENABLE_RECOMMENDATION_LOG:
         if st.button("Save recommendations to log"):

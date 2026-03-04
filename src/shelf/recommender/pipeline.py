@@ -116,7 +116,7 @@ def recommend_hybrid(
     catalog = df_catalog.copy()
     shelf = df_shelf.copy() if df_shelf is not None else pd.DataFrame()
 
-    for col in ("brand", "name", "fragrance_category", "sex", "rating", "votes", "fragrance_id"):
+    for col in ("brand", "name", "fragrance_category", "sex", "rating", "votes", "fragrance_id", "url"):
         if col not in catalog.columns:
             catalog[col] = pd.NA
 
@@ -185,6 +185,7 @@ def recommend_hybrid(
         "family",
         "score",
         "fragrance_id",
+        "url",
     ]
 
     if debug_mode:

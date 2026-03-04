@@ -219,7 +219,18 @@ def _recommend_legacy(
         return pd.DataFrame()
 
     out = pd.DataFrame(selected_rows)
-    preferred_cols = ["brand", "name", "sex", "fragrance_category", "rating", "votes", "family", "score", "fragrance_id"]
+    preferred_cols = [
+        "brand",
+        "name",
+        "sex",
+        "fragrance_category",
+        "rating",
+        "votes",
+        "family",
+        "score",
+        "fragrance_id",
+        "url",
+    ]
     existing_cols = [c for c in preferred_cols if c in out.columns]
     return out[existing_cols].copy()
 

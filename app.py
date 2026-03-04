@@ -35,7 +35,7 @@ def main() -> None:
             font-size: 1.15rem;
             color: #6b7280;
             line-height: 1.65;
-            max-width: 920px;
+            max-width: none;
         }
 
         /* Launch buttons */
@@ -168,7 +168,7 @@ def main() -> None:
         st.markdown(f'<div class="hero-title">{img_tag} Fragrance World</div>', unsafe_allow_html=True)
         st.markdown(
             '<div class="hero-subtitle">'
-            "Interactive dashboards for exploring perfume ratings, brand positioning, fragrance families, and personalized recommendations."
+            "Explore perfume ratings, brand positioning, fragrance families, and personalized recommendations."
             "</div>",
             unsafe_allow_html=True,
         )

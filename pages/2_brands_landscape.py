@@ -415,12 +415,18 @@ def main() -> None:
 
     st.title("🗺️ Brand Landscape Explorer")
     st.markdown(
-        "Interactive scatter plot of every brand — **Quality vs. Popularity**. "
-        "Marker size reflects total votes (power-scaled). Search & highlight any brand."
+        '<p class="subtitle">Compare all brands by quality and popularity. Discover key statistics for any brand.</p>',
+        unsafe_allow_html=True,
     )
     st.markdown(
         """
         <style>
+        .subtitle {
+            color: #6b7280;
+            font-size: 1.1rem;
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+        }
         div[data-testid="stToggle"] label p {
             font-weight: 600;
             color: #111827;
@@ -452,7 +458,8 @@ def main() -> None:
     brands_list = sorted(df["brand"].unique().tolist())
 
     # ── Search & highlight controls ──────────────────────────
-    col_search, col_btn = st.columns([4, 1])
+    # Search bar width: 50% shorter (4 -> 2); reset button width: 30% narrower (1 -> 0.7)
+    col_search, col_btn, _ = st.columns([2, 0.7, 2.3], vertical_alignment="bottom")
     with col_search:
         selected_brand = st.selectbox(
             "🔍 Search & highlight a brand",
@@ -461,8 +468,6 @@ def main() -> None:
             help="Select a brand to highlight it on the scatter plot.",
         )
     with col_btn:
-        st.write("")  # vertical spacer
-        st.write("")
         reset = st.button("↺ Reset", use_container_width=True)
 
     highlight = selected_brand if selected_brand and not reset else None

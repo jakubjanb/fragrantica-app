@@ -1178,6 +1178,13 @@ def main() -> None:
             --accent-hover: #115e59;
         }
 
+        .subtitle {
+            color: #6b7280;
+            font-size: 1.1rem;
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+        }
+
         div[data-testid="stMetric"] {
             background: var(--surface);
             border: 1px solid var(--border-subtle);
@@ -1257,7 +1264,10 @@ def main() -> None:
         st.warning("No fragrance categories available to plot.")
         st.stop()
 
-    st.caption("Click a scent family to explore its fragrances and subcategories.")
+    st.markdown(
+        '<p class="subtitle">Click a scent family to explore its fragrances and subcategories.</p>',
+        unsafe_allow_html=True,
+    )
 
     fig, point_lookup = _build_sunburst(cat_counts)
     sunburst_event = _render_clickable_sunburst(fig)
