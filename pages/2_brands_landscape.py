@@ -408,7 +408,7 @@ def _metric_card(label: str, value: str, percentile: float, col) -> None:
 def main() -> None:
     st.set_page_config(
         page_title="Brands Landscape",
-        page_icon="🗺️️",
+        page_icon="🗺️",
         layout="wide",
         initial_sidebar_state="expanded",
     )

@@ -86,7 +86,7 @@ def _metric_card(label: str, value: str, percentile: float, col) -> None:
 def main() -> None:
     st.set_page_config(
         page_title="Fragrance Explorer",
-        page_icon="🧴",
+        page_icon="🔍",
         layout="wide",
         initial_sidebar_state="expanded",
     )
@@ -347,7 +347,7 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    st.title("🧴 Fragrance Explorer")
+    st.title("🔍 Fragrance Explorer")
     st.markdown(
         '<p class="subtitle">Explore perfume ratings and votes by brand. Use the selector below to choose a brand, then view its perfumes plotted by rating and popularity.</p>',
         unsafe_allow_html=True,

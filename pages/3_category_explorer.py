@@ -6,6 +6,7 @@ Visualize fragrance families and categories using a two-level sunburst chart.
 
 from __future__ import annotations
 
+import base64
 import json
 import math
 from pathlib import Path
@@ -1158,6 +1159,30 @@ def _init_state() -> None:
             st.session_state[key] = value
 
 
+def _build_icon_tag(filename: str, fallback_emoji: str) -> str:
+    icon_path = Path(__file__).resolve().parent.parent / "Graphics" / filename
+    if not icon_path.exists():
+        return fallback_emoji
+
+    try:
+        icon_data = base64.b64encode(icon_path.read_bytes()).decode("utf-8")
+    except OSError:
+        return fallback_emoji
+
+    return (
+        '<img src="data:image/png;base64,'
+        f'{icon_data}" width="44" style="vertical-align: middle; display: inline-block;">'
+    )
+
+
+def _render_title_with_icon(title: str, icon_tag: str) -> None:
+    st.markdown(
+        f'<h1 style="display:flex;align-items:center;gap:0.55rem;margin:0 0 0.25rem 0;">'
+        f"<span>{icon_tag}</span><span>{title}</span></h1>",
+        unsafe_allow_html=True,
+    )
+
+
 def main() -> None:
     st.set_page_config(
         page_title="Fragrance Categories",
@@ -1246,7 +1271,8 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    st.title("Fragrance Categories Explorer")
+    wheel_icon_tag = _build_icon_tag("fragrance_wheel.png", "🏷️")
+    _render_title_with_icon("Fragrance Categories Explorer", wheel_icon_tag)
 
     if not MASTER_CSV.exists():
         st.error(f"Data file not found: `{MASTER_CSV}`")

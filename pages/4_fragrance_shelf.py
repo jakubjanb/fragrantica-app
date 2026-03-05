@@ -10,6 +10,9 @@ MVP features:
 
 from __future__ import annotations
 
+import base64
+from pathlib import Path
+
 import streamlit as st
 
 from src.shelf.auth import auth_block
@@ -23,15 +26,40 @@ from src.shelf.ui_recommendations import _render_recommendations
 from src.shelf.ui_shelf import _render_shelf_list
 
 
+def _build_icon_tag(filename: str, fallback_emoji: str) -> str:
+    icon_path = Path(__file__).resolve().parent.parent / "Graphics" / filename
+    if not icon_path.exists():
+        return fallback_emoji
+
+    try:
+        icon_data = base64.b64encode(icon_path.read_bytes()).decode("utf-8")
+    except OSError:
+        return fallback_emoji
+
+    return (
+        '<img src="data:image/png;base64,'
+        f'{icon_data}" width="44" style="vertical-align: middle; display: inline-block;">'
+    )
+
+
+def _render_title_with_icon(title: str, icon_tag: str) -> None:
+    st.markdown(
+        f'<h1 style="display:flex;align-items:center;gap:0.55rem;margin:0 0 0.25rem 0;">'
+        f"<span>{icon_tag}</span><span>{title}</span></h1>",
+        unsafe_allow_html=True,
+    )
+
+
 def main() -> None:
     st.set_page_config(
         page_title="Fragrance Shelf",
-        page_icon="🧴",
+        page_icon="👤",
         layout="wide",
         initial_sidebar_state="expanded",
     )
     _inject_page_styles()
-    st.title("Your Fragrance Shelf")
+    shelf_icon_tag = _build_icon_tag("fragrance_shelf.png", "👤")
+    _render_title_with_icon("Your Fragrance Shelf", shelf_icon_tag)
     subtitle_html = (
         '<p class="subtitle">Build your personal shelf, save your ratings, and discover '
         "recommendations tailored to your collection.</p>"
